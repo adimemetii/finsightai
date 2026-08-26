@@ -16,6 +16,8 @@ import os
 import re
 import secrets
 import shutil
+import tempfile
+import threading
 import traceback
 import uuid
 from datetime import datetime, date, timedelta
@@ -94,8 +96,47 @@ def _bool_env(name: str, default: bool) -> bool:
     return _env(name, str(default)).lower() in {"1", "true", "yes", "on"}
 
 
+_db_ssl_ca_lock = threading.Lock()
+_db_ssl_ca_source: str | None = None
+_db_ssl_ca_path: str | None = None
+
+
+def _ssl_ca_path(value: str) -> str:
+    """Return a connector-readable CA path for a path or PEM environment value."""
+    if not value.startswith("-----BEGIN CERTIFICATE-----"):
+        return value
+
+    pem = value.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\r\n", "\n").replace("\r", "\n")
+    global _db_ssl_ca_source, _db_ssl_ca_path
+    with _db_ssl_ca_lock:
+        if _db_ssl_ca_source == pem and _db_ssl_ca_path and os.path.isfile(_db_ssl_ca_path):
+            return _db_ssl_ca_path
+
+        fd, path = tempfile.mkstemp(prefix="finsight-aiven-", suffix=".pem")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as cert_file:
+                cert_file.write(pem)
+                if not pem.endswith("\n"):
+                    cert_file.write("\n")
+            os.chmod(path, 0o600)
+        except Exception:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+            raise
+
+        _db_ssl_ca_source = pem
+        _db_ssl_ca_path = path
+        return path
+
+
 def _db_config() -> dict[str, object]:
-    """Build the verified TLS configuration for the Aiven MySQL service."""
+    """Build verified TLS configuration, materializing PEM CA values when needed."""
     required = ("DB_HOST", "DB_PORT", "DB_USER", "DB_PASSWORD", "DB_NAME")
     missing = [name for name in required if not _env(name)]
     if missing:
@@ -111,7 +152,7 @@ def _db_config() -> dict[str, object]:
     }
     ssl_ca = _env("DB_SSL_CA")
     if ssl_ca:
-        config["ssl_ca"] = ssl_ca
+        config["ssl_ca"] = _ssl_ca_path(ssl_ca)
     return config
 
 
