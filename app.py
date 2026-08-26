@@ -2421,8 +2421,8 @@ def server_error(_):
 # =====================================================
 if __name__ == "__main__":
     init_database()
-    host = _env("FLASK_RUN_HOST", "127.0.0.1")
-    port = _int_env("FLASK_RUN_PORT", 5000)
+    host = _env("FLASK_RUN_HOST", "0.0.0.0")
+    port = _int_env("PORT", _int_env("FLASK_RUN_PORT", 5000))
     debug = _bool_env("FLASK_DEBUG", False)
     print(f"[finsight] Starting Flask on http://{host}:{port} (debug={debug})")
     app.run(host=host, port=port, debug=debug)
