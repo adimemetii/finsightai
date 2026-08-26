@@ -1,0 +1,4 @@
+Payment_Method,Transactions,Amount,Revenue,Expenses,Profit
+Card,23,45000.0,67100.0,26450.0,40650.0
+Bank Transfer,20,79600.0,82300.0,47050.0,35250.0
+Cash,17,43250.0,53350.0,21900.0,31450.0

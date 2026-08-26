@@ -1,0 +1,19 @@
+Transaction_ID,Date,Description,Amount,Revenue,Expenses,Type,Category,Payment_Method,Department,City,Status,Profit
+T001,2026-01-01,Software Sale,4500,4500,0,Income,Sales,Bank Transfer,Sales,Prishtina,Completed,4500
+T002,2026-01-02,Office Rent,1800,0,1800,Expense,Rent,Bank Transfer,Administration,Prishtina,Completed,-1800
+T003,2026-01-03,Cloud Services,650,0,650,Expense,Technology,Credit Card,IT,Prishtina,Completed,-650
+T004,2026-01-04,Client Payment,7200,7200,0,Income,Services,Bank Transfer,Sales,Gjilan,Completed,7200
+T005,2026-01-05,Employee Salary,3200,0,3200,Expense,Salary,Bank Transfer,HR,Prishtina,Completed,-3200
+T006,2026-01-06,Google Ads,800,0,800,Expense,Marketing,Credit Card,Marketing,Prishtina,Completed,-800
+T007,2026-01-07,Software License,5300,5300,0,Income,Sales,Bank Transfer,Sales,Prizren,Completed,5300
+T008,2026-01-08,Internet Bill,180,0,180,Expense,Utilities,Bank Transfer,IT,Gjilan,Completed,-180
+T009,2026-01-09,Consulting Revenue,6100,6100,0,Income,Services,Bank Transfer,Sales,Ferizaj,Completed,6100
+T010,2026-01-10,Computer Equipment,2400,0,2400,Expense,Equipment,Credit Card,IT,Prishtina,Completed,-2400
+
+
+
+
+
+
+
+

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="b" x1="10" y1="8" x2="118" y2="120" gradientUnits="userSpaceOnUse"><stop stop-color="#252b38"/><stop offset=".5" stop-color="#11131a"/><stop offset="1" stop-color="#050507"/></linearGradient>
+    <linearGradient id="a" x1="40" y1="89" x2="92" y2="33" gradientUnits="userSpaceOnUse"><stop stop-color="#6e9ff0"/><stop offset=".55" stop-color="#b9d4ff"/><stop offset="1" stop-color="#fff"/></linearGradient>
+  </defs>
+  <rect x="5" y="5" width="118" height="118" rx="34" fill="#030304"/>
+  <rect x="7" y="7" width="114" height="114" rx="32" fill="url(#b)" stroke="#64748b" stroke-opacity=".65" stroke-width="2"/>
+  <path d="M31 85V45.5L64 26l33 19.5V85L64 104 31 85Z" fill="none" stroke="#9bb8e7" stroke-opacity=".25" stroke-width="2"/>
+  <path d="M43 77.5V51.8L63.5 40l11.5 6.7-12 7-7.4 4.3v7.7h19.1v10.5H55.6v8.1L43 77.5Z" fill="url(#a)"/>
+  <path d="m72.5 85 14.5-14.5" stroke="#c7dcff" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="89.5" cy="68.5" r="6.5" fill="#dceaff"/><circle cx="89.5" cy="68.5" r="3" fill="#5f91df"/>
+</svg>

@@ -1,0 +1,5 @@
+Prediction_ID,Prediction_Type,Date,Actual,Predicted,Difference
+15,revenue,2026-05-09,,10758.3,
+16,profit,2026-05-09,,-8826.22,
+17,amount,2026-05-09,,12144.0,
+18,expenses,2026-05-09,,9910.0,

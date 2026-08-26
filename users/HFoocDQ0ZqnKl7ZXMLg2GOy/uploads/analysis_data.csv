@@ -1,0 +1,61 @@
+tx_date,transaction_id,description,amount,revenue,expenses,profit,Transaction_Type,category,payment_method,department,city,status,Upload_File_ID,User_ID,Imported_At,Company,Date_Number,Month,Day_of_Week
+2026-03-01,TX201,Product Sale,850,850,300,550,Sale,Retail,Cash,Sales,Gjilan,Completed,11,12,2026-08-20 16:44:53,Meda 92,0,3,6
+2026-03-02,TX202,Online Order,12500,12500,4200,8300,Sale,Ecommerce,Card,Sales,Prishtina,Completed,11,12,2026-08-20 16:44:53,Meda 92,1,3,0
+2026-03-03,TX203,Equipment Purchase,18500,4200,18500,-14300,Expense,Equipment,Bank Transfer,Operations,Prizren,Completed,11,12,2026-08-20 16:44:53,Meda 92,2,3,1
+2026-03-04,TX204,Consulting Service,7600,7600,1800,5800,Sale,Services,Bank Transfer,Consulting,Ferizaj,Completed,11,12,2026-08-20 16:44:53,Meda 92,3,3,2
+2026-03-05,TX205,Marketing Campaign,3200,9800,3200,6600,Expense,Marketing,Card,Marketing,Prishtina,Completed,11,12,2026-08-20 16:44:53,Meda 92,4,3,3
+2026-03-06,TX206,Product Sale,14500,14500,6100,8400,Sale,Retail,Cash,Sales,Gjilan,Completed,11,12,2026-08-20 16:44:53,Meda 92,5,3,4
+2026-03-07,TX207,Office Rent,6800,7200,6800,400,Expense,Rent,Bank Transfer,Administration,Prishtina,Completed,11,12,2026-08-20 16:44:53,Meda 92,6,3,5
+2026-03-08,TX208,Online Order,2200,2200,850,1350,Sale,Ecommerce,Card,Sales,Prizren,Completed,11,12,2026-08-20 16:44:53,Meda 92,7,3,6
+2026-03-09,TX209,Service Payment,19800,19800,7200,12600,Sale,Services,Bank Transfer,Sales,Ferizaj,Completed,11,12,2026-08-20 16:44:53,Meda 92,8,3,0
+2026-03-10,TX210,Transport Cost,4100,5400,4100,1300,Expense,Transport,Cash,Operations,Gjilan,Completed,11,12,2026-08-20 16:44:53,Meda 92,9,3,1
+2026-03-11,TX211,Product Sale,6300,6300,2100,4200,Sale,Retail,Card,Sales,Prishtina,Completed,11,12,2026-08-20 16:44:53,Meda 92,10,3,2
+2026-03-12,TX212,Software Subscription,1200,6800,1200,5600,Expense,Software,Card,IT,Prizren,Completed,11,12,2026-08-20 16:44:53,Meda 92,11,3,3
+2026-03-13,TX213,Online Order,17500,17500,6900,10600,Sale,Ecommerce,Card,Sales,Gjilan,Completed,11,12,2026-08-20 16:44:53,Meda 92,12,3,4
+2026-03-14,TX214,Marketing Campaign,8900,11000,8900,2100,Expense,Marketing,Bank Transfer,Marketing,Prishtina,Completed,11,12,2026-08-20 16:44:53,Meda 92,13,3,5
+2026-03-15,TX215,Consulting Service,4200,4200,1300,2900,Sale,Services,Cash,Consulting,Ferizaj,Completed,11,12,2026-08-20 16:44:53,Meda 92,14,3,6
+2026-03-16,TX216,Equipment Purchase,27500,5100,27500,-22400,Expense,Equipment,Bank Transfer,Operations,Prizren,Completed,11,12,2026-08-20 16:44:53,Meda 92,15,3,0
+2026-03-17,TX217,Product Sale,11200,11200,4300,6900,Sale,Retail,Cash,Sales,Gjilan,Completed,11,12,2026-08-20 16:44:53,Meda 92,16,3,1
+2026-03-18,TX218,Online Order,3900,3900,1500,2400,Sale,Ecommerce,Card,Sales,Prishtina,Completed,11,12,2026-08-20 16:44:53,Meda 92,17,3,2
+2026-03-19,TX219,Service Payment,24500,24500,9400,15100,Sale,Services,Bank Transfer,Sales,Prizren,Completed,11,12,2026-08-20 16:44:53,Meda 92,18,3,3
+2026-03-20,TX220,Office Supplies,2300,4100,2300,1800,Expense,Office,Cash,Administration,Ferizaj,Completed,11,12,2026-08-20 16:44:53,Meda 92,19,3,4
+2026-03-21,TX221,Product Sale,5200,5200,1900,3300,Sale,Retail,Card,Sales,Gjilan,Completed,11,12,2026-08-20 16:44:53,Meda 92,20,3,5
+2026-03-22,TX222,Marketing Campaign,15600,18200,15600,2600,Expense,Marketing,Bank Transfer,Marketing,Prishtina,Completed,11,12,2026-08-20 16:44:53,Meda 92,21,3,6
+2026-03-23,TX223,Online Order,9300,9300,3500,5800,Sale,Ecommerce,Card,Sales,Prizren,Completed,11,12,2026-08-20 16:44:53,Meda 92,22,3,0
+2026-03-24,TX224,Transport Cost,1700,3900,1700,2200,Expense,Transport,Cash,Operations,Ferizaj,Completed,11,12,2026-08-20 16:44:53,Meda 92,23,3,1
+2026-03-25,TX225,Consulting Service,31000,31000,11200,19800,Sale,Services,Bank Transfer,Consulting,Gjilan,Completed,11,12,2026-08-20 16:44:53,Meda 92,24,3,2
+2026-03-26,TX226,Product Sale,7800,7800,2800,5000,Sale,Retail,Cash,Sales,Prishtina,Completed,11,12,2026-08-20 16:44:53,Meda 92,25,3,3
+2026-03-27,TX227,Office Rent,7200,8500,7200,1300,Expense,Rent,Bank Transfer,Administration,Prizren,Completed,11,12,2026-08-20 16:44:53,Meda 92,26,3,4
+2026-03-28,TX228,Online Order,21500,21500,8200,13300,Sale,Ecommerce,Card,Sales,Ferizaj,Completed,11,12,2026-08-20 16:44:53,Meda 92,27,3,5
+2026-03-29,TX229,Software Subscription,3600,9400,3600,5800,Expense,Software,Card,IT,Gjilan,Completed,11,12,2026-08-20 16:44:53,Meda 92,28,3,6
+2026-03-30,TX230,Service Payment,12800,12800,4700,8100,Sale,Services,Bank Transfer,Sales,Prishtina,Completed,11,12,2026-08-20 16:44:53,Meda 92,29,3,0
+2026-04-01,TX231,Product Sale,2600,2600,900,1700,Sale,Retail,Cash,Sales,Prizren,Completed,11,12,2026-08-20 16:44:53,Meda 92,31,4,2
+2026-04-02,TX232,Online Order,28700,28700,10600,18100,Sale,Ecommerce,Card,Sales,Gjilan,Completed,11,12,2026-08-20 16:44:53,Meda 92,32,4,3
+2026-04-03,TX233,Equipment Purchase,42000,6800,42000,-35200,Expense,Equipment,Bank Transfer,Operations,Prishtina,Completed,11,12,2026-08-20 16:44:53,Meda 92,33,4,4
+2026-04-04,TX234,Consulting Service,9200,9200,2800,6400,Sale,Services,Bank Transfer,Consulting,Ferizaj,Completed,11,12,2026-08-20 16:44:53,Meda 92,34,4,5
+2026-04-05,TX235,Marketing Campaign,24000,27500,24000,3500,Expense,Marketing,Card,Marketing,Prizren,Completed,11,12,2026-08-20 16:44:53,Meda 92,35,4,6
+2026-04-06,TX236,Product Sale,16800,16800,5900,10900,Sale,Retail,Cash,Sales,Gjilan,Completed,11,12,2026-08-20 16:44:53,Meda 92,36,4,0
+2026-04-07,TX237,Office Supplies,1900,3500,1900,1600,Expense,Office,Card,Administration,Prishtina,Completed,11,12,2026-08-20 16:44:53,Meda 92,37,4,1
+2026-04-08,TX238,Online Order,4600,4600,1700,2900,Sale,Ecommerce,Card,Sales,Ferizaj,Completed,11,12,2026-08-20 16:44:53,Meda 92,38,4,2
+2026-04-09,TX239,Service Payment,35200,35200,13100,22100,Sale,Services,Bank Transfer,Sales,Prizren,Completed,11,12,2026-08-20 16:44:53,Meda 92,39,4,3
+2026-04-10,TX240,Transport Cost,6200,7800,6200,1600,Expense,Transport,Cash,Operations,Gjilan,Completed,11,12,2026-08-20 16:44:53,Meda 92,40,4,4
+2026-04-11,TX241,Product Sale,10100,10100,3700,6400,Sale,Retail,Card,Sales,Prishtina,Completed,11,12,2026-08-20 16:44:53,Meda 92,41,4,5
+2026-04-12,TX242,Software Subscription,5400,11200,5400,5800,Expense,Software,Card,IT,Ferizaj,Completed,11,12,2026-08-20 16:44:53,Meda 92,42,4,6
+2026-04-13,TX243,Online Order,19200,19200,7200,12000,Sale,Ecommerce,Card,Sales,Prizren,Completed,11,12,2026-08-20 16:44:53,Meda 92,43,4,0
+2026-04-14,TX244,Marketing Campaign,4700,13500,4700,8800,Expense,Marketing,Bank Transfer,Marketing,Gjilan,Completed,11,12,2026-08-20 16:44:53,Meda 92,44,4,1
+2026-04-15,TX245,Consulting Service,61000,61000,22500,38500,Sale,Services,Bank Transfer,Consulting,Prishtina,Completed,11,12,2026-08-20 16:44:53,Meda 92,45,4,2
+2026-04-16,TX246,Product Sale,7300,7300,2500,4800,Sale,Retail,Cash,Sales,Ferizaj,Completed,11,12,2026-08-20 16:44:53,Meda 92,46,4,3
+2026-04-17,TX247,Equipment Purchase,31500,9000,31500,-22500,Expense,Equipment,Bank Transfer,Operations,Prizren,Completed,11,12,2026-08-20 16:44:53,Meda 92,47,4,4
+2026-04-18,TX248,Online Order,5200,5200,1900,3300,Sale,Ecommerce,Card,Sales,Gjilan,Completed,11,12,2026-08-20 16:44:53,Meda 92,48,4,5
+2026-04-19,TX249,Service Payment,28500,28500,9800,18700,Sale,Services,Bank Transfer,Sales,Prishtina,Completed,11,12,2026-08-20 16:44:53,Meda 92,49,4,6
+2026-04-20,TX250,Office Rent,8100,9800,8100,1700,Expense,Rent,Bank Transfer,Administration,Ferizaj,Completed,11,12,2026-08-20 16:44:53,Meda 92,50,4,0
+2026-04-21,TX251,Product Sale,13800,13800,5100,8700,Sale,Retail,Cash,Sales,Prizren,Completed,11,12,2026-08-20 16:44:53,Meda 92,51,4,1
+2026-04-22,TX252,Marketing Campaign,19800,25000,19800,5200,Expense,Marketing,Card,Marketing,Gjilan,Completed,11,12,2026-08-20 16:44:53,Meda 92,52,4,2
+2026-04-23,TX253,Online Order,31400,31400,11800,19600,Sale,Ecommerce,Card,Sales,Prishtina,Completed,11,12,2026-08-20 16:44:53,Meda 92,53,4,3
+2026-04-24,TX254,Transport Cost,2800,6200,2800,3400,Expense,Transport,Cash,Operations,Ferizaj,Completed,11,12,2026-08-20 16:44:53,Meda 92,54,4,4
+2026-04-25,TX255,Consulting Service,47500,47500,16800,30700,Sale,Services,Bank Transfer,Consulting,Prizren,Completed,11,12,2026-08-20 16:44:53,Meda 92,55,4,5
+2026-04-26,TX256,Product Sale,5900,5900,2100,3800,Sale,Retail,Cash,Sales,Gjilan,Completed,11,12,2026-08-20 16:44:53,Meda 92,56,4,6
+2026-04-27,TX257,Software Subscription,7300,14500,7300,7200,Expense,Software,Card,IT,Prishtina,Completed,11,12,2026-08-20 16:44:53,Meda 92,57,4,0
+2026-04-28,TX258,Online Order,8300,8300,3100,5200,Sale,Ecommerce,Card,Sales,Ferizaj,Completed,11,12,2026-08-20 16:44:53,Meda 92,58,4,1
+2026-04-29,TX259,Service Payment,68000,68000,25500,42500,Sale,Services,Bank Transfer,Sales,Gjilan,Completed,11,12,2026-08-20 16:44:53,Meda 92,59,4,2
+2026-04-30,TX260,Equipment Purchase,52000,12000,52000,-40000,Expense,Equipment,Bank Transfer,Operations,Prishtina,Completed,11,12,2026-08-20 16:44:53,Meda 92,60,4,3

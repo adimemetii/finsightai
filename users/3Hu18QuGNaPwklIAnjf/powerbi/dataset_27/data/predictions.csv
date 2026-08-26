@@ -1,0 +1,4 @@
+Prediction_ID,Prediction_Type,Prediction_Date,Actual_Value,Predicted_Value,Prediction_Error,Model,Created_At
+12,amount,2026-09-05,,13522.00,,linear_regression,2026-08-24 20:11:55
+13,amount,2026-09-05,,13522.00,,linear_regression,2026-08-24 20:14:03
+14,amount,2026-09-05,,13522.00,,linear_regression,2026-08-24 20:18:24

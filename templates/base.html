@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="{{ current_locale|default('sq') }}">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>{% block title %}FinSight AI - Financial Forecasting{% endblock %}</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/favicon.svg', v='2') }}">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.4.0/dist/css/tabler.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% block extra_css %}{% endblock %}
+</head>
+<body data-bs-theme="dark">
+{% if session.user_id %}
+<div class="page">
+    <aside class="navbar navbar-vertical navbar-expand-lg navbar-dark app-sidebar" data-bs-theme="dark">
+        <div class="container-fluid">
+            <h1 class="navbar-brand navbar-brand-autodark"><a href="{{ url_for('dashboard') }}" class="brand-mark"><img src="{{ url_for('static', filename='img/finsight-mark.svg') }}" alt="FinSight AI"><span>FinSight <em>AI</em></span></a></h1>
+            <div class="collapse navbar-collapse" id="sidebar-menu">
+                <ul class="navbar-nav pt-lg-3">
+                    <li class="nav-item"><a class="nav-link {{ 'active' if request.endpoint == 'dashboard' else '' }}" href="{{ url_for('dashboard') }}"><span class="nav-link-icon"><i class="fas fa-gauge-high"></i></span><span class="nav-link-title">{{ t('nav.dashboard') }}</span></a></li>
+                    <li class="nav-item"><a class="nav-link {{ 'active' if request.endpoint == 'upload_file' else '' }}" href="{{ url_for('upload_file') }}"><span class="nav-link-icon"><i class="fas fa-cloud-arrow-up"></i></span><span class="nav-link-title">{{ t('nav.upload') }}</span></a></li>
+                    <li class="nav-item"><a class="nav-link {{ 'active' if request.endpoint == 'history' else '' }}" href="{{ url_for('history') }}"><span class="nav-link-icon"><i class="fas fa-clock-rotate-left"></i></span><span class="nav-link-title">{{ t('nav.history') }}</span></a></li>
+                    <li class="nav-item"><a class="nav-link {{ 'active' if request.endpoint == 'analytics' else '' }}" href="{{ url_for('analytics') }}"><span class="nav-link-icon"><i class="fas fa-chart-line"></i></span><span class="nav-link-title">{{ t('nav.analytics') }}</span></a></li>
+                    <li class="nav-item"><a class="nav-link {{ 'active' if request.endpoint == 'predict' else '' }}" href="{{ url_for('predict') }}"><span class="nav-link-icon"><i class="fas fa-wand-magic-sparkles"></i></span><span class="nav-link-title">{{ t('nav.predict') }}</span></a></li>
+                    <li class="nav-item"><a class="nav-link {{ 'active' if request.endpoint == 'powerbi' else '' }}" href="{{ url_for('powerbi') }}"><span class="nav-link-icon"><i class="fas fa-chart-pie"></i></span><span class="nav-link-title">{{ t('nav.powerbi') }}</span></a></li>
+                </ul>
+            </div>
+            <div class="sidebar-account mt-auto"><div class="avatar avatar-sm bg-primary-lt text-primary"><i class="fas fa-building"></i></div><div class="min-w-0"><div class="text-truncate fw-semibold">{{ session.company_name }}</div><small class="text-secondary text-truncate d-block">{{ session.user_name }}</small></div><form method="post" action="{{ url_for('logout') }}" class="ms-auto"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-ghost-secondary btn-icon" type="submit" title="{{ t('sidebar.logout.title') }}" aria-label="{{ t('sidebar.logout.title') }}"><i class="fas fa-arrow-right-from-bracket"></i></button></form></div>
+        </div>
+    </aside>
+    <header class="navbar navbar-expand-md d-print-none app-topbar"><div class="container-xl"><button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#sidebar-menu" aria-controls="sidebar-menu" aria-label="{{ t('header.toggle.nav') }}"><span class="navbar-toggler-icon"></span></button><a class="navbar-brand d-lg-none" href="{{ url_for('dashboard') }}"><img src="{{ url_for('static', filename='img/finsight-mark.svg') }}" alt="" class="me-2">FinSight AI</a><div class="navbar-nav flex-row order-md-last ms-auto"><div class="nav-item me-2"><select class="form-select form-select-sm language-switcher" aria-label="{{ t('nav.language') }}" onchange="window.location=this.value">{% for code in locales %}<option value="{{ url_for('_set_language', locale=code) }}" {{ 'selected' if current_locale == code else '' }}>{{ locale_flags[code] }} {{ locale_names[code] }}</option>{% endfor %}</select></div><div class="nav-item"><span class="nav-link text-secondary"><i class="fas fa-user-circle me-2"></i>{{ session.user_name }}</span></div></div></div></header>
+    <div class="page-wrapper">
+{% else %}
+<div class="public-shell">
+    <header class="navbar navbar-expand-md app-topbar"><div class="container-xl"><a class="navbar-brand brand-mark" href="{{ url_for('index') }}"><img src="{{ url_for('static', filename='img/finsight-mark.svg') }}" alt="FinSight AI"><span>FinSight <em>AI</em></span></a><div class="public-actions"><select class="form-select form-select-sm language-switcher" aria-label="{{ t('nav.language') }}" onchange="window.location=this.value">{% for code in locales %}<option value="{{ url_for('_set_language', locale=code) }}" {{ 'selected' if current_locale == code else '' }}>{{ locale_flags[code] }} {{ locale_names[code] }}</option>{% endfor %}</select><a class="btn btn-ghost-primary" href="{{ url_for('login') }}">{{ t('nav.login') }}</a><a class="btn btn-primary get-started-btn" href="{{ url_for('signup') }}"><i class="fas fa-arrow-right me-1"></i>{{ t('nav.signup') }}</a></div></div></header>
+{% endif %}
+        <div class="page-body"><div class="container-xl">{% with messages = get_flashed_messages(with_categories=true) %}{% for category, msg in messages %}<div class="alert alert-{{ category }} alert-dismissible mt-3" role="alert">{{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endfor %}{% endwith %}{% block content %}{% endblock %}</div></div>
+        <footer class="app-footer"><div class="container-xl"><span>{{ t('footer.copyright') }}</span><span>{{ t('footer.tagline') }}</span></div></footer>
+{% if session.user_id %}</div></div>{% else %}</div>{% endif %}
+<script src="https://cdn.jsdelivr.net/npm/@tabler/core@1.4.0/dist/js/tabler.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
+<script>window.FINSIGHT_I18N = window.FINSIGHT_I18N || {{ catalog|tojson }};</script>
+<script src="{{ url_for('static', filename='js/script.js') }}"></script>
+{% block extra_js %}{% endblock %}
+</body>
+</html>

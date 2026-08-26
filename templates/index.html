@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t('landing.hero.title') }} - FinSight AI{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-9 mx-auto">
+        <!-- Hero Section -->
+        <div class="hero-section text-center mb-5">
+            <h1 class="display-4 fw-bold mb-3 gradient-text">
+                <i class="fas fa-lightbulb"></i> {{ t('landing.hero.title') }}
+            </h1>
+            <p class="lead text-muted mb-4">
+                {{ t('landing.hero.subtitle') }}
+            </p>
+            <p class="text-muted">
+                {{ t('landing.hero.body') }}
+            </p>
+            {% if not session.user_id %}
+                <div class="get-started-section mt-4">
+                    <a href="{{ url_for('signup') }}" class="btn btn-primary btn-lg get-started-btn me-2">
+                        <i class="fas fa-user-plus me-2"></i>{{ t('landing.cta.get_started') }}
+                    </a>
+                    <a href="{{ url_for('login') }}" class="btn btn-ghost-primary btn-lg get-started-secondary">
+                        <i class="fas fa-sign-in-alt me-2"></i>{{ t('landing.cta.login') }}
+                    </a>
+                </div>
+            {% else %}
+                <div class="get-started-section mt-4">
+                    <a href="{{ url_for('dashboard') }}" class="btn btn-primary btn-lg get-started-btn">
+                        <i class="fas fa-th-large me-2"></i>{{ t('landing.cta.dashboard') }}
+                    </a>
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- Features -->
+        <div class="row g-4 mb-5">
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body text-center">
+                        <i class="fas fa-upload fa-2x text-primary mb-3"></i>
+                        <h5>{{ t('landing.feature.upload.title') }}</h5>
+                        <p class="text-muted small">{{ t('landing.feature.upload.body') }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body text-center">
+                        <i class="fas fa-broom fa-2x text-success mb-3"></i>
+                        <h5>{{ t('landing.feature.clean.title') }}</h5>
+                        <p class="text-muted small">{{ t('landing.feature.clean.body') }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body text-center">
+                        <i class="fas fa-chart-line fa-2x text-warning mb-3"></i>
+                        <h5>{{ t('landing.feature.ml.title') }}</h5>
+                        <p class="text-muted small">{{ t('landing.feature.ml.body') }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

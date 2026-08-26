@@ -1,0 +1,6 @@
+Date,Amount,Revenue,Expenses,Category,City,Status,Payment_Method
+2024-01-01,100,500,200,Sales,Tirana,Completed,Cash
+2024-01-02,150,600,250,Sales,Tirana,Completed,Card
+2024-01-03,200,700,300,Sales,Pristina,Pending,Cash
+2024-01-04,120,550,230,Sales,Pristina,Completed,Card
+2024-01-05,180,650,280,Sales,Tirana,Completed,Cash

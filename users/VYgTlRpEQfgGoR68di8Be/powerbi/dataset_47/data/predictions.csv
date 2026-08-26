@@ -1,0 +1,9 @@
+Prediction_ID,Prediction_Type,Prediction_Date,Actual_Value,Predicted_Value,Prediction_Error,Model,Created_At
+47,revenue,2026-09-05,,75343.33,,linear_regression,2026-08-25 08:40:39
+48,profit,2026-09-05,,74613.35,,linear_regression,2026-08-25 08:40:39
+49,expenses,2026-09-05,,11304.00,,linear_regression,2026-08-25 08:40:39
+50,amount,2026-09-05,,15234.00,,linear_regression,2026-08-25 08:40:39
+43,revenue,2028-12-26,,385117.46,,linear_regression,2026-08-25 08:40:01
+44,profit,2028-12-26,,556573.78,,linear_regression,2026-08-25 08:40:01
+45,expenses,2028-12-26,,10582.00,,linear_regression,2026-08-25 08:40:01
+46,amount,2028-12-26,,13440.00,,linear_regression,2026-08-25 08:40:01

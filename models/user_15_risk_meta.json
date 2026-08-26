@@ -1,0 +1,19 @@
+{
+  "features": [
+    "revenue",
+    "expenses",
+    "profit",
+    "amount"
+  ],
+  "label_distribution": {
+    "LOW RISK": 54,
+    "HIGH RISK": 5,
+    "MEDIUM RISK": 1
+  },
+  "training_date": "2026-08-25T02:25:56.978749",
+  "risk_thresholds": {
+    "high_risk": "profit < 0 OR expenses > revenue",
+    "medium_risk": "revenue > 0 AND profit_margin < 0.08",
+    "low_risk": "otherwise"
+  }
+}

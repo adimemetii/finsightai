@@ -1,0 +1,61 @@
+Date,Transaction_ID,Description,Amount,Revenue,Expenses,Profit,Transaction_Type,Category,Payment_Method,Department,City,Status,Upload_File_ID,User_ID,Imported_At,Company
+2026-01-01,TR001,Product Sale,2500.0,2500.0,1200.0,1300.0,Sale,Retail,Cash,Sales,Gjilan,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-01-02,TR002,Office Supplies,450.0,1800.0,450.0,1350.0,Expense,Office,Card,Administration,Prishtina,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-01-03,TR003,Service Payment,3200.0,3200.0,1400.0,1800.0,Sale,Services,Bank Transfer,Sales,Prishtina,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-01-04,TR004,Marketing Campaign,900.0,2100.0,900.0,1200.0,Expense,Marketing,Card,Marketing,Ferizaj,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-01-05,TR005,Online Order,1800.0,1800.0,750.0,1050.0,Sale,Ecommerce,Card,Sales,Prizren,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-01-06,TR006,Equipment Purchase,4200.0,3500.0,4200.0,-700.0,Expense,Equipment,Bank Transfer,Operations,Gjilan,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-01-07,TR007,Product Sale,2750.0,2750.0,1300.0,1450.0,Sale,Retail,Cash,Sales,Prishtina,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-01-08,TR008,Consulting Service,3900.0,3900.0,1600.0,2300.0,Sale,Services,Bank Transfer,Consulting,Ferizaj,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-01-09,TR009,Transport Cost,600.0,2400.0,600.0,1800.0,Expense,Transport,Cash,Operations,Prizren,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-01-10,TR010,Online Order,2200.0,2200.0,950.0,1250.0,Sale,Ecommerce,Card,Sales,Gjilan,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-01-11,TR011,Office Rent,1500.0,2800.0,1500.0,1300.0,Expense,Rent,Bank Transfer,Administration,Prishtina,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-01-12,TR012,Product Sale,3100.0,3100.0,1450.0,1650.0,Sale,Retail,Cash,Sales,Ferizaj,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-01-13,TR013,Software Subscription,800.0,2600.0,800.0,1800.0,Expense,Software,Card,IT,Prishtina,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-01-14,TR014,Service Payment,4500.0,4500.0,1900.0,2600.0,Sale,Services,Bank Transfer,Sales,Gjilan,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-01-15,TR015,Marketing Campaign,1100.0,3000.0,1100.0,1900.0,Expense,Marketing,Card,Marketing,Prizren,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-01-16,TR016,Product Sale,2900.0,2900.0,1250.0,1650.0,Sale,Retail,Cash,Sales,Prishtina,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-01-17,TR017,Equipment Purchase,3500.0,2700.0,3500.0,-800.0,Expense,Equipment,Bank Transfer,Operations,Ferizaj,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-01-18,TR018,Online Order,2400.0,2400.0,1000.0,1400.0,Sale,Ecommerce,Card,Sales,Gjilan,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-01-19,TR019,Consulting Service,4100.0,4100.0,1700.0,2400.0,Sale,Services,Bank Transfer,Consulting,Prishtina,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-01-20,TR020,Transport Cost,700.0,2500.0,700.0,1800.0,Expense,Transport,Cash,Operations,Prizren,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-01-21,TR021,Product Sale,3300.0,3300.0,1500.0,1800.0,Sale,Retail,Card,Sales,Gjilan,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-01-22,TR022,Office Supplies,550.0,1900.0,550.0,1350.0,Expense,Office,Cash,Administration,Ferizaj,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-01-23,TR023,Service Payment,4700.0,4700.0,2100.0,2600.0,Sale,Services,Bank Transfer,Sales,Prishtina,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-01-24,TR024,Marketing Campaign,1250.0,3200.0,1250.0,1950.0,Expense,Marketing,Card,Marketing,Gjilan,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-01-25,TR025,Online Order,2600.0,2600.0,1100.0,1500.0,Sale,Ecommerce,Card,Sales,Prizren,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-01-26,TR026,Office Rent,1500.0,2900.0,1500.0,1400.0,Expense,Rent,Bank Transfer,Administration,Prishtina,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-01-27,TR027,Product Sale,3500.0,3500.0,1600.0,1900.0,Sale,Retail,Cash,Sales,Ferizaj,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-01-28,TR028,Software Subscription,850.0,2800.0,850.0,1950.0,Expense,Software,Card,IT,Gjilan,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-01-29,TR029,Consulting Service,4400.0,4400.0,1800.0,2600.0,Sale,Services,Bank Transfer,Consulting,Prishtina,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-01-30,TR030,Transport Cost,650.0,2300.0,650.0,1650.0,Expense,Transport,Cash,Operations,Prizren,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-02-01,TR031,Product Sale,3700.0,3700.0,1700.0,2000.0,Sale,Retail,Cash,Sales,Gjilan,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-02-02,TR032,Online Order,2800.0,2800.0,1200.0,1600.0,Sale,Ecommerce,Card,Sales,Prishtina,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-02-03,TR033,Marketing Campaign,1400.0,3400.0,1400.0,2000.0,Expense,Marketing,Card,Marketing,Ferizaj,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-02-04,TR034,Service Payment,4900.0,4900.0,2200.0,2700.0,Sale,Services,Bank Transfer,Sales,Prizren,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-02-05,TR035,Equipment Purchase,3800.0,3000.0,3800.0,-800.0,Expense,Equipment,Bank Transfer,Operations,Gjilan,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-02-06,TR036,Product Sale,3200.0,3200.0,1450.0,1750.0,Sale,Retail,Cash,Sales,Prishtina,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-02-07,TR037,Office Supplies,600.0,2100.0,600.0,1500.0,Expense,Office,Card,Administration,Ferizaj,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-02-08,TR038,Consulting Service,5200.0,5200.0,2300.0,2900.0,Sale,Services,Bank Transfer,Consulting,Prishtina,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-02-09,TR039,Online Order,3000.0,3000.0,1250.0,1750.0,Sale,Ecommerce,Card,Sales,Gjilan,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-02-10,TR040,Office Rent,1600.0,3100.0,1600.0,1500.0,Expense,Rent,Bank Transfer,Administration,Prizren,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-02-11,TR041,Product Sale,3900.0,3900.0,1800.0,2100.0,Sale,Retail,Cash,Sales,Ferizaj,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-02-12,TR042,Software Subscription,900.0,2900.0,900.0,2000.0,Expense,Software,Card,IT,Prishtina,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-02-13,TR043,Service Payment,5400.0,5400.0,2400.0,3000.0,Sale,Services,Bank Transfer,Sales,Gjilan,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-02-14,TR044,Marketing Campaign,1500.0,3600.0,1500.0,2100.0,Expense,Marketing,Card,Marketing,Prizren,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-02-15,TR045,Online Order,3100.0,3100.0,1350.0,1750.0,Sale,Ecommerce,Card,Sales,Prishtina,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-02-16,TR046,Transport Cost,750.0,2700.0,750.0,1950.0,Expense,Transport,Cash,Operations,Ferizaj,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-02-17,TR047,Product Sale,4200.0,4200.0,1900.0,2300.0,Sale,Retail,Cash,Sales,Gjilan,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-02-18,TR048,Consulting Service,5600.0,5600.0,2500.0,3100.0,Sale,Services,Bank Transfer,Consulting,Prishtina,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-02-19,TR049,Equipment Purchase,4100.0,3300.0,4100.0,-800.0,Expense,Equipment,Bank Transfer,Operations,Prizren,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-02-20,TR050,Product Sale,4500.0,4500.0,2050.0,2450.0,Sale,Retail,Card,Sales,Ferizaj,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-02-21,TR051,Office Supplies,650.0,2200.0,650.0,1550.0,Expense,Office,Cash,Administration,Gjilan,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-02-22,TR052,Online Order,3400.0,3400.0,1450.0,1950.0,Sale,Ecommerce,Card,Sales,Prishtina,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-02-23,TR053,Marketing Campaign,1600.0,3800.0,1600.0,2200.0,Expense,Marketing,Card,Marketing,Ferizaj,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-02-24,TR054,Service Payment,5800.0,5800.0,2600.0,3200.0,Sale,Services,Bank Transfer,Sales,Prizren,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-02-25,TR055,Office Rent,1600.0,3200.0,1600.0,1600.0,Expense,Rent,Bank Transfer,Administration,Gjilan,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-02-26,TR056,Product Sale,4700.0,4700.0,2150.0,2550.0,Sale,Retail,Cash,Sales,Prishtina,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-02-27,TR057,Software Subscription,950.0,3100.0,950.0,2150.0,Expense,Software,Card,IT,Ferizaj,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-02-28,TR058,Consulting Service,6100.0,6100.0,2750.0,3350.0,Sale,Services,Bank Transfer,Consulting,Gjilan,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-03-01,TR059,Online Order,3600.0,3600.0,1550.0,2050.0,Sale,Ecommerce,Card,Sales,Prizren,Completed,54,18,2026-08-25 08:57:55,Acme Crop
+2026-03-02,TR060,Product Sale,4900.0,4900.0,2200.0,2700.0,Sale,Retail,Cash,Sales,Prishtina,Completed,54,18,2026-08-25 08:57:55,Acme Crop

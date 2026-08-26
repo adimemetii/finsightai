@@ -1,0 +1,71 @@
+Date,Transaction_ID,Description,Amount,Revenue,Expenses,Profit,Transaction_Type,Category,Payment_Method,Department,City,Status,Upload_File_ID,Imported_At
+2026-01-01,T001,Software Sale,4500.0,4500.0,0.0,4500.0,Income,Sales,Bank Transfer,Sales,Prishtina,Completed,5,2026-08-19 14:34:49
+2026-01-01,T001,Software Sale,4500.0,4500.0,0.0,4500.0,Income,Sales,Bank Transfer,Sales,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-01-02,T002,Office Rent,1800.0,0.0,1800.0,-1800.0,Expense,Rent,Bank Transfer,Administration,Prishtina,Completed,5,2026-08-19 14:34:49
+2026-01-02,T002,Office Rent,1800.0,0.0,1800.0,-1800.0,Expense,Rent,Bank Transfer,Administration,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-01-03,T003,Cloud Services,650.0,0.0,650.0,-650.0,Expense,Technology,Credit Card,IT,Prishtina,Completed,5,2026-08-19 14:34:49
+2026-01-03,T003,Cloud Services,650.0,0.0,650.0,-650.0,Expense,Technology,Credit Card,IT,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-01-04,T004,Client Payment,7200.0,7200.0,0.0,7200.0,Income,Services,Bank Transfer,Sales,Gjilan,Completed,5,2026-08-19 14:34:49
+2026-01-04,T004,Client Payment,7200.0,7200.0,0.0,7200.0,Income,Services,Bank Transfer,Sales,Gjilan,Completed,6,2026-08-19 15:48:39
+2026-01-05,T005,Employee Salary,3200.0,0.0,3200.0,-3200.0,Expense,Salary,Bank Transfer,HR,Prishtina,Completed,5,2026-08-19 14:34:49
+2026-01-05,T005,Employee Salary,3200.0,0.0,3200.0,-3200.0,Expense,Salary,Bank Transfer,HR,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-01-06,T006,Google Ads,800.0,0.0,800.0,-800.0,Expense,Marketing,Credit Card,Marketing,Prishtina,Completed,5,2026-08-19 14:34:49
+2026-01-06,T006,Google Ads,800.0,0.0,800.0,-800.0,Expense,Marketing,Credit Card,Marketing,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-01-07,T007,Software License,5300.0,5300.0,0.0,5300.0,Income,Sales,Bank Transfer,Sales,Prizren,Completed,5,2026-08-19 14:34:49
+2026-01-07,T007,Software License,5300.0,5300.0,0.0,5300.0,Income,Sales,Bank Transfer,Sales,Prizren,Completed,6,2026-08-19 15:48:39
+2026-01-08,T008,Internet Bill,180.0,0.0,180.0,-180.0,Expense,Utilities,Bank Transfer,IT,Gjilan,Completed,5,2026-08-19 14:34:49
+2026-01-08,T008,Internet Bill,180.0,0.0,180.0,-180.0,Expense,Utilities,Bank Transfer,IT,Gjilan,Completed,6,2026-08-19 15:48:39
+2026-01-09,T009,Consulting Revenue,6100.0,6100.0,0.0,6100.0,Income,Services,Bank Transfer,Sales,Ferizaj,Completed,5,2026-08-19 14:34:49
+2026-01-09,T009,Consulting Revenue,6100.0,6100.0,0.0,6100.0,Income,Services,Bank Transfer,Sales,Ferizaj,Completed,6,2026-08-19 15:48:39
+2026-01-10,T010,Computer Equipment,2400.0,0.0,2400.0,-2400.0,Expense,Equipment,Credit Card,IT,Prishtina,Completed,5,2026-08-19 14:34:49
+2026-01-10,T010,Computer Equipment,2400.0,0.0,2400.0,-2400.0,Expense,Equipment,Credit Card,IT,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-01-11,T011,Web Development,4800.0,4800.0,0.0,4800.0,Income,Services,Bank Transfer,IT,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-01-12,T012,Office Supplies,420.0,0.0,420.0,-420.0,Expense,Supplies,Cash,Administration,Gjilan,Completed,6,2026-08-19 15:48:39
+2026-01-13,T013,Annual Subscription,1200.0,0.0,1200.0,-1200.0,Expense,Software,Credit Card,IT,Prizren,Completed,6,2026-08-19 15:48:39
+2026-01-14,T014,Client Project,8500.0,8500.0,0.0,8500.0,Income,Services,Bank Transfer,Sales,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-01-15,T015,Travel Expenses,950.0,0.0,950.0,-950.0,Expense,Travel,Credit Card,Sales,Ferizaj,Completed,6,2026-08-19 15:48:39
+2026-01-16,T016,Product Sale,3900.0,3900.0,0.0,3900.0,Income,Sales,Bank Transfer,Sales,Gjilan,Completed,6,2026-08-19 15:48:39
+2026-01-17,T017,Electricity Bill,310.0,0.0,310.0,-310.0,Expense,Utilities,Bank Transfer,Administration,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-01-18,T018,Marketing Campaign,1450.0,0.0,1450.0,-1450.0,Expense,Marketing,Credit Card,Marketing,Prizren,Completed,6,2026-08-19 15:48:39
+2026-01-19,T019,Data Analysis Service,6700.0,6700.0,0.0,6700.0,Income,Services,Bank Transfer,IT,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-01-20,T020,Employee Salary,3200.0,0.0,3200.0,-3200.0,Expense,Salary,Bank Transfer,HR,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-01-21,T021,Software Sale,5600.0,5600.0,0.0,5600.0,Income,Sales,Bank Transfer,Sales,Ferizaj,Completed,6,2026-08-19 15:48:39
+2026-01-22,T022,Cloud Hosting,780.0,0.0,780.0,-780.0,Expense,Technology,Credit Card,IT,Gjilan,Completed,6,2026-08-19 15:48:39
+2026-01-23,T023,Consulting Revenue,7400.0,7400.0,0.0,7400.0,Income,Services,Bank Transfer,Sales,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-01-24,T024,Office Maintenance,650.0,0.0,650.0,-650.0,Expense,Maintenance,Cash,Administration,Prizren,Completed,6,2026-08-19 15:48:39
+2026-01-25,T025,Software License,6100.0,6100.0,0.0,6100.0,Income,Sales,Bank Transfer,Sales,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-01-26,T026,Internet Bill,190.0,0.0,190.0,-190.0,Expense,Utilities,Bank Transfer,IT,Gjilan,Completed,6,2026-08-19 15:48:39
+2026-01-27,T027,Client Payment,9200.0,9200.0,0.0,9200.0,Income,Services,Bank Transfer,Sales,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-01-28,T028,Office Rent,1800.0,0.0,1800.0,-1800.0,Expense,Rent,Bank Transfer,Administration,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-01-29,T029,Social Media Ads,1100.0,0.0,1100.0,-1100.0,Expense,Marketing,Credit Card,Marketing,Ferizaj,Completed,6,2026-08-19 15:48:39
+2026-01-30,T030,Software Development,7800.0,7800.0,0.0,7800.0,Income,Services,Bank Transfer,IT,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-01-31,T031,Employee Salary,3200.0,0.0,3200.0,-3200.0,Expense,Salary,Bank Transfer,HR,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-02-01,T032,Product Sale,4300.0,4300.0,0.0,4300.0,Income,Sales,Bank Transfer,Sales,Gjilan,Completed,6,2026-08-19 15:48:39
+2026-02-02,T033,Cloud Services,720.0,0.0,720.0,-720.0,Expense,Technology,Credit Card,IT,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-02-03,T034,Client Project,8900.0,8900.0,0.0,8900.0,Income,Services,Bank Transfer,Sales,Prizren,Completed,6,2026-08-19 15:48:39
+2026-02-04,T035,Office Supplies,510.0,0.0,510.0,-510.0,Expense,Supplies,Cash,Administration,Gjilan,Completed,6,2026-08-19 15:48:39
+2026-02-05,T036,Consulting Revenue,6300.0,6300.0,0.0,6300.0,Income,Services,Bank Transfer,Sales,Ferizaj,Completed,6,2026-08-19 15:48:39
+2026-02-06,T037,Equipment Purchase,2700.0,0.0,2700.0,-2700.0,Expense,Equipment,Credit Card,IT,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-02-07,T038,Software License,5400.0,5400.0,0.0,5400.0,Income,Sales,Bank Transfer,Sales,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-02-08,T039,Google Ads,950.0,0.0,950.0,-950.0,Expense,Marketing,Credit Card,Marketing,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-02-09,T040,Data Analysis Service,7100.0,7100.0,0.0,7100.0,Income,Services,Bank Transfer,IT,Gjilan,Completed,6,2026-08-19 15:48:39
+2026-02-10,T041,Office Rent,1800.0,0.0,1800.0,-1800.0,Expense,Rent,Bank Transfer,Administration,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-02-11,T042,Internet Bill,210.0,0.0,210.0,-210.0,Expense,Utilities,Bank Transfer,IT,Prizren,Completed,6,2026-08-19 15:48:39
+2026-02-12,T043,Client Payment,8400.0,8400.0,0.0,8400.0,Income,Services,Bank Transfer,Sales,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-02-13,T044,Employee Salary,3300.0,0.0,3300.0,-3300.0,Expense,Salary,Bank Transfer,HR,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-02-14,T045,Product Sale,4700.0,4700.0,0.0,4700.0,Income,Sales,Bank Transfer,Sales,Ferizaj,Completed,6,2026-08-19 15:48:39
+2026-02-15,T046,Travel Expenses,780.0,0.0,780.0,-780.0,Expense,Travel,Credit Card,Sales,Gjilan,Completed,6,2026-08-19 15:48:39
+2026-02-16,T047,Software Development,8200.0,8200.0,0.0,8200.0,Income,Services,Bank Transfer,IT,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-02-17,T048,Cloud Hosting,850.0,0.0,850.0,-850.0,Expense,Technology,Credit Card,IT,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-02-18,T049,Consulting Revenue,6900.0,6900.0,0.0,6900.0,Income,Services,Bank Transfer,Sales,Prizren,Completed,6,2026-08-19 15:48:39
+2026-02-19,T050,Marketing Campaign,1300.0,0.0,1300.0,-1300.0,Expense,Marketing,Credit Card,Marketing,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-02-20,T051,Software Sale,5900.0,5900.0,0.0,5900.0,Income,Sales,Bank Transfer,Sales,Gjilan,Completed,6,2026-08-19 15:48:39
+2026-02-21,T052,Office Maintenance,720.0,0.0,720.0,-720.0,Expense,Maintenance,Cash,Administration,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-02-22,T053,Client Project,9600.0,9600.0,0.0,9600.0,Income,Services,Bank Transfer,Sales,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-02-23,T054,Electricity Bill,340.0,0.0,340.0,-340.0,Expense,Utilities,Bank Transfer,Administration,Gjilan,Completed,6,2026-08-19 15:48:39
+2026-02-24,T055,Data Analysis Service,7600.0,7600.0,0.0,7600.0,Income,Services,Bank Transfer,IT,Ferizaj,Completed,6,2026-08-19 15:48:39
+2026-02-25,T056,Employee Salary,3300.0,0.0,3300.0,-3300.0,Expense,Salary,Bank Transfer,HR,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-02-26,T057,Software License,6200.0,6200.0,0.0,6200.0,Income,Sales,Bank Transfer,Sales,Prishtina,Completed,6,2026-08-19 15:48:39
+2026-02-27,T058,Social Media Ads,1250.0,0.0,1250.0,-1250.0,Expense,Marketing,Credit Card,Marketing,Prizren,Completed,6,2026-08-19 15:48:39
+2026-02-28,T059,Client Payment,8800.0,8800.0,0.0,8800.0,Income,Services,Bank Transfer,Sales,Gjilan,Completed,6,2026-08-19 15:48:39
+2026-03-01,T060,Cloud Services,900.0,0.0,900.0,-900.0,Expense,Technology,Credit Card,IT,Prishtina,Completed,6,2026-08-19 15:48:39

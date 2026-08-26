@@ -1,0 +1,6 @@
+Department,Transactions,Amount,Revenue,Expenses,Profit
+Sales,4,23100.0,23100.0,0.0,23100.0
+IT,3,3230.0,0.0,3230.0,-3230.0
+Administration,1,1800.0,0.0,1800.0,-1800.0
+HR,1,3200.0,0.0,3200.0,-3200.0
+Marketing,1,800.0,0.0,800.0,-800.0

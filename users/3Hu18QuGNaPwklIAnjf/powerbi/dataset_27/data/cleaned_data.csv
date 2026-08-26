@@ -1,0 +1,61 @@
+Date,Transaction_ID,Description,Amount,Revenue,Expenses,Profit,Transaction_Type,Category,Payment_Method,Department,City,Status,Upload_File_ID,User_ID,Imported_At,Company
+2026-03-01,TX201,Product Sale,850.0,850.0,300.0,550.0,Sale,Retail,Cash,Sales,Gjilan,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-03-02,TX202,Online Order,12500.0,12500.0,4200.0,8300.0,Sale,Ecommerce,Card,Sales,Prishtina,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-03-03,TX203,Equipment Purchase,18500.0,4200.0,18500.0,-14300.0,Expense,Equipment,Bank Transfer,Operations,Prizren,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-03-04,TX204,Consulting Service,7600.0,7600.0,1800.0,5800.0,Sale,Services,Bank Transfer,Consulting,Ferizaj,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-03-05,TX205,Marketing Campaign,3200.0,9800.0,3200.0,6600.0,Expense,Marketing,Card,Marketing,Prishtina,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-03-06,TX206,Product Sale,14500.0,14500.0,6100.0,8400.0,Sale,Retail,Cash,Sales,Gjilan,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-03-07,TX207,Office Rent,6800.0,7200.0,6800.0,400.0,Expense,Rent,Bank Transfer,Administration,Prishtina,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-03-08,TX208,Online Order,2200.0,2200.0,850.0,1350.0,Sale,Ecommerce,Card,Sales,Prizren,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-03-09,TX209,Service Payment,19800.0,19800.0,7200.0,12600.0,Sale,Services,Bank Transfer,Sales,Ferizaj,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-03-10,TX210,Transport Cost,4100.0,5400.0,4100.0,1300.0,Expense,Transport,Cash,Operations,Gjilan,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-03-11,TX211,Product Sale,6300.0,6300.0,2100.0,4200.0,Sale,Retail,Card,Sales,Prishtina,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-03-12,TX212,Software Subscription,1200.0,6800.0,1200.0,5600.0,Expense,Software,Card,IT,Prizren,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-03-13,TX213,Online Order,17500.0,17500.0,6900.0,10600.0,Sale,Ecommerce,Card,Sales,Gjilan,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-03-14,TX214,Marketing Campaign,8900.0,11000.0,8900.0,2100.0,Expense,Marketing,Bank Transfer,Marketing,Prishtina,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-03-15,TX215,Consulting Service,4200.0,4200.0,1300.0,2900.0,Sale,Services,Cash,Consulting,Ferizaj,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-03-16,TX216,Equipment Purchase,27500.0,5100.0,27500.0,-22400.0,Expense,Equipment,Bank Transfer,Operations,Prizren,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-03-17,TX217,Product Sale,11200.0,11200.0,4300.0,6900.0,Sale,Retail,Cash,Sales,Gjilan,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-03-18,TX218,Online Order,3900.0,3900.0,1500.0,2400.0,Sale,Ecommerce,Card,Sales,Prishtina,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-03-19,TX219,Service Payment,24500.0,24500.0,9400.0,15100.0,Sale,Services,Bank Transfer,Sales,Prizren,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-03-20,TX220,Office Supplies,2300.0,4100.0,2300.0,1800.0,Expense,Office,Cash,Administration,Ferizaj,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-03-21,TX221,Product Sale,5200.0,5200.0,1900.0,3300.0,Sale,Retail,Card,Sales,Gjilan,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-03-22,TX222,Marketing Campaign,15600.0,18200.0,15600.0,2600.0,Expense,Marketing,Bank Transfer,Marketing,Prishtina,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-03-23,TX223,Online Order,9300.0,9300.0,3500.0,5800.0,Sale,Ecommerce,Card,Sales,Prizren,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-03-24,TX224,Transport Cost,1700.0,3900.0,1700.0,2200.0,Expense,Transport,Cash,Operations,Ferizaj,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-03-25,TX225,Consulting Service,31000.0,31000.0,11200.0,19800.0,Sale,Services,Bank Transfer,Consulting,Gjilan,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-03-26,TX226,Product Sale,7800.0,7800.0,2800.0,5000.0,Sale,Retail,Cash,Sales,Prishtina,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-03-27,TX227,Office Rent,7200.0,8500.0,7200.0,1300.0,Expense,Rent,Bank Transfer,Administration,Prizren,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-03-28,TX228,Online Order,21500.0,21500.0,8200.0,13300.0,Sale,Ecommerce,Card,Sales,Ferizaj,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-03-29,TX229,Software Subscription,3600.0,9400.0,3600.0,5800.0,Expense,Software,Card,IT,Gjilan,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-03-30,TX230,Service Payment,12800.0,12800.0,4700.0,8100.0,Sale,Services,Bank Transfer,Sales,Prishtina,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-04-01,TX231,Product Sale,2600.0,2600.0,900.0,1700.0,Sale,Retail,Cash,Sales,Prizren,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-04-02,TX232,Online Order,28700.0,28700.0,10600.0,18100.0,Sale,Ecommerce,Card,Sales,Gjilan,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-04-03,TX233,Equipment Purchase,42000.0,6800.0,42000.0,-35200.0,Expense,Equipment,Bank Transfer,Operations,Prishtina,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-04-04,TX234,Consulting Service,9200.0,9200.0,2800.0,6400.0,Sale,Services,Bank Transfer,Consulting,Ferizaj,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-04-05,TX235,Marketing Campaign,24000.0,27500.0,24000.0,3500.0,Expense,Marketing,Card,Marketing,Prizren,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-04-06,TX236,Product Sale,16800.0,16800.0,5900.0,10900.0,Sale,Retail,Cash,Sales,Gjilan,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-04-07,TX237,Office Supplies,1900.0,3500.0,1900.0,1600.0,Expense,Office,Card,Administration,Prishtina,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-04-08,TX238,Online Order,4600.0,4600.0,1700.0,2900.0,Sale,Ecommerce,Card,Sales,Ferizaj,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-04-09,TX239,Service Payment,35200.0,35200.0,13100.0,22100.0,Sale,Services,Bank Transfer,Sales,Prizren,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-04-10,TX240,Transport Cost,6200.0,7800.0,6200.0,1600.0,Expense,Transport,Cash,Operations,Gjilan,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-04-11,TX241,Product Sale,10100.0,10100.0,3700.0,6400.0,Sale,Retail,Card,Sales,Prishtina,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-04-12,TX242,Software Subscription,5400.0,11200.0,5400.0,5800.0,Expense,Software,Card,IT,Ferizaj,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-04-13,TX243,Online Order,19200.0,19200.0,7200.0,12000.0,Sale,Ecommerce,Card,Sales,Prizren,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-04-14,TX244,Marketing Campaign,4700.0,13500.0,4700.0,8800.0,Expense,Marketing,Bank Transfer,Marketing,Gjilan,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-04-15,TX245,Consulting Service,61000.0,61000.0,22500.0,38500.0,Sale,Services,Bank Transfer,Consulting,Prishtina,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-04-16,TX246,Product Sale,7300.0,7300.0,2500.0,4800.0,Sale,Retail,Cash,Sales,Ferizaj,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-04-17,TX247,Equipment Purchase,31500.0,9000.0,31500.0,-22500.0,Expense,Equipment,Bank Transfer,Operations,Prizren,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-04-18,TX248,Online Order,5200.0,5200.0,1900.0,3300.0,Sale,Ecommerce,Card,Sales,Gjilan,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-04-19,TX249,Service Payment,28500.0,28500.0,9800.0,18700.0,Sale,Services,Bank Transfer,Sales,Prishtina,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-04-20,TX250,Office Rent,8100.0,9800.0,8100.0,1700.0,Expense,Rent,Bank Transfer,Administration,Ferizaj,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-04-21,TX251,Product Sale,13800.0,13800.0,5100.0,8700.0,Sale,Retail,Cash,Sales,Prizren,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-04-22,TX252,Marketing Campaign,19800.0,25000.0,19800.0,5200.0,Expense,Marketing,Card,Marketing,Gjilan,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-04-23,TX253,Online Order,31400.0,31400.0,11800.0,19600.0,Sale,Ecommerce,Card,Sales,Prishtina,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-04-24,TX254,Transport Cost,2800.0,6200.0,2800.0,3400.0,Expense,Transport,Cash,Operations,Ferizaj,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-04-25,TX255,Consulting Service,47500.0,47500.0,16800.0,30700.0,Sale,Services,Bank Transfer,Consulting,Prizren,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-04-26,TX256,Product Sale,5900.0,5900.0,2100.0,3800.0,Sale,Retail,Cash,Sales,Gjilan,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-04-27,TX257,Software Subscription,7300.0,14500.0,7300.0,7200.0,Expense,Software,Card,IT,Prishtina,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-04-28,TX258,Online Order,8300.0,8300.0,3100.0,5200.0,Sale,Ecommerce,Card,Sales,Ferizaj,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-04-29,TX259,Service Payment,68000.0,68000.0,25500.0,42500.0,Sale,Services,Bank Transfer,Sales,Gjilan,Completed,27,15,2026-08-24 19:43:06,ProVent LLC
+2026-04-30,TX260,Equipment Purchase,52000.0,12000.0,52000.0,-40000.0,Expense,Equipment,Bank Transfer,Operations,Prishtina,Completed,27,15,2026-08-24 19:43:06,ProVent LLC

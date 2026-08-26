@@ -1,0 +1,2 @@
+Prediction_ID,Prediction_Type,Prediction_Date,Actual_Value,Predicted_Value,Prediction_Error,Model,Created_At
+10,profit,2026-09-05,,1468.53,,linear_regression,2026-08-21 15:06:34

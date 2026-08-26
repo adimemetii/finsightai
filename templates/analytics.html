@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}{{ t('analytics.title') }} - FinSight AI{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+    .analytics-hero { background: linear-gradient(135deg, #1a1a1f, #09090b); border: 1px solid rgba(255,255,255,.12); box-shadow: 0 22px 50px rgba(0,0,0,.3); color: #fff; border-radius: 18px; }
+    .chart-panel { min-height: 360px; }
+    .chart-panel canvas { max-height: 290px; }
+    #cityMap { min-height: 340px; border-radius: 10px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    <div>
+        <h1 class="mb-1"><i class="fas fa-chart-line text-primary"></i> {{ t('analytics.title') }}</h1>
+        <p class="text-muted mb-0"><i class="fas fa-building"></i> {{ company_name }} | {{ t('analytics.subtitle') }}</p>
+    </div>
+    <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary"><i class="fas fa-arrow-left"></i> {{ t('nav.dashboard') }}</a>
+</div>
+
+{% if not has_data %}
+<div class="analytics-hero p-5 text-center">
+    <i class="fas fa-chart-area fa-3x mb-3"></i>
+    <h2>{{ t('analytics.empty.title') }}</h2>
+    <p class="mb-4">{{ t('analytics.empty.body') }}</p>
+    <a href="{{ url_for('upload_file') }}" class="btn btn-light"><i class="fas fa-cloud-arrow-up"></i> {{ t('nav.upload') }}</a>
+</div>
+{% else %}
+<div class="row g-3 mb-4">
+    {% if generic_analytics|default(false) %}
+        {% for key, val in totals.items() %}
+        {% if loop.index <= 4 %}
+        {% set label_key = 'analytics.kpi.' ~ key %}
+        <div class="col-sm-6 col-xl-3"><div class="card border-0 shadow-sm h-100"><div class="card-body"><small class="text-muted"><i class="fas fa-chart-simple me-1"></i>{{ t(label_key, default=key|replace('_', ' ')|title) }}</small><h3 class="text-primary mb-0 mt-2">{{ format_currency(val) }}</h3></div></div></div>
+        {% endif %}
+        {% endfor %}
+    {% else %}
+    {% set kpi_specs = [('revenue', 'analytics.kpi.revenue', 'arrow-trend-up', 'success'), ('expenses', 'analytics.kpi.expenses', 'credit-card', 'danger'), ('profit', 'analytics.kpi.profit', 'coins', 'primary'), ('amount', 'analytics.kpi.amount', 'money-bill-wave', 'warning')] %}
+    {% for key, label_key, icon, color in kpi_specs %}
+    <div class="col-sm-6 col-xl-3"><div class="card border-0 shadow-sm h-100"><div class="card-body"><small class="text-muted"><i class="fas fa-{{ icon }} me-1"></i>{{ t(label_key) }}</small><h3 class="text-{{ color }} mb-0 mt-2">{{ format_currency(totals.get(key, 0)) }}</h3></div></div></div>
+    {% endfor %}
+    {% endif %}
+</div>
+
+<div class="row g-4">
+    <div class="col-xl-8"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0"><h5 class="mb-0"><i class="fas fa-chart-area"></i> {{ t('analytics.trend') }}</h5></div><div class="card-body"><canvas id="trendChart"></canvas></div></div></div>
+    <div class="col-xl-4"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0"><h5 class="mb-0"><i class="fas fa-chart-pie"></i> {{ t('analytics.category.title', category=category_label|default(t('analytics.kpi.amount'))) }}</h5></div><div class="card-body"><canvas id="categoryChart"></canvas>{% if not categories %}<p class="text-muted text-center mt-3">{{ t('analytics.category.empty') }}</p>{% endif %}</div></div></div>
+    <div class="col-xl-6"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0"><h5 class="mb-0"><i class="fas fa-chart-column"></i> {{ t('analytics.totals') }}</h5></div><div class="card-body"><canvas id="totalsChart"></canvas></div></div></div>
+    <div class="col-xl-6"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0"><h5 class="mb-0"><i class="fas fa-city"></i> {{ t('analytics.city') }}</h5></div><div class="card-body p-2">{% if cities %}<div id="cityMap"></div>{% else %}<div class="d-flex align-items-center justify-content-center h-100 text-muted p-5">{{ t('analytics.city.empty') }}</div>{% endif %}</div></div></div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+{% if has_data %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% if cities %}<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>{% endif %}
+<script>
+const monthly = {{ monthly|tojson }};
+const categories = {{ categories|tojson }};
+const cities = {{ cities|tojson }};
+const totals = {{ totals|tojson }};
+const genericMode = {{ generic_analytics|tojson }};
+const trendKeys = {{ trend_keys|tojson }};
+const trendLabels = {{ trend_labels|tojson }};
+const locale = {{ current_locale|tojson }};
+const I18N = window.FINSIGHT_I18N || {};
+const T = (key, fallback) => (I18N[key] !== undefined ? I18N[key] : (fallback || key));
+const numLocale = locale === 'sq' ? 'sq-AL' : (locale === 'de' ? 'de-DE' : (locale === 'zh' ? 'zh-CN' : 'en-US'));
+const money = value => new Intl.NumberFormat(numLocale, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(Number(value));
+const prettyKey = key => String(key).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+const localizedLabel = (key) => T('analytics.kpi.' + key, prettyKey(key));
+
+Chart.defaults.color = '#b6b6bf';
+Chart.defaults.borderColor = 'rgba(255,255,255,.10)';
+Chart.defaults.font.family = 'Inter, ui-sans-serif, system-ui, sans-serif';
+
+const trendColors = ['#8cbcff', '#69d6a3', '#f5c76e', '#ff8b99', '#c4a7ff', '#75d6db', '#f39bbd'];
+const chartDataset = trendKeys.map((key, i) => ({
+    label: (trendLabels[i] || localizedLabel(key)),
+    data: monthly.map(row => row[key] !== undefined ? row[key] : 0),
+    borderColor: trendColors[i % trendColors.length],
+    backgroundColor: trendColors[i % trendColors.length] + '22',
+    fill: true, tension: .35
+}));
+
+new Chart(document.getElementById('trendChart'), {
+    type: 'line',
+    data: { labels: monthly.map(row => row.period), datasets: chartDataset },
+    options: {responsive: true, maintainAspectRatio: false, interaction: {intersect: false, mode: 'index'}, scales: {y: {ticks: {callback: money}, grid: {color: 'rgba(255,255,255,.08)'}}, x: {grid: {display: false}}}}
+});
+
+new Chart(document.getElementById('categoryChart'), {
+    type: 'doughnut', data: {labels: categories.map(row => row.category), datasets: [{data: categories.map(row => row.amount), backgroundColor: trendColors, borderColor: '#16161a', borderWidth: 3}]},
+    options: {responsive: true, plugins: {legend: {position: 'bottom'}, tooltip: {callbacks: {label: context => context.label + ': ' + money(context.raw)}}}}
+});
+
+const totalKeys = Object.keys(totals);
+const totalLabels = totalKeys.map(localizedLabel);
+const totalColors = ['#16a34a','#dc2626','#2563eb','#f59e0b','#7c3aed','#0891b2'];
+new Chart(document.getElementById('totalsChart'), {
+    type: 'bar', data: {labels: totalLabels, datasets: [{label: T('analytics.chart.total_label', 'Total'), data: totalKeys.map(k => totals[k]), backgroundColor: totalColors.slice(0, totalKeys.length), borderRadius: 6}]},
+    options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {display: false}}, scales: {y: {ticks: {callback: money}, grid: {color: 'rgba(255,255,255,.08)'}}, x: {grid: {display: false}}}}
+});
+
+{% if cities %}
+const map = L.map('cityMap').setView([20, 0], 2);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution: '&copy; OpenStreetMap contributors'}).addTo(map);
+const cityLayer = L.layerGroup().addTo(map);
+Promise.all(cities.map(async city => {
+    try {
+        const response = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(city.city));
+        const results = await response.json();
+        if (results[0]) {
+            const amountLabel = T('analytics.city.popup', '{{ t('analytics.city.popup', amount='') }}').replace('{amount}', money(city.amount));
+            L.marker([results[0].lat, results[0].lon]).bindPopup('<strong>' + city.city + '</strong><br>' + amountLabel).addTo(cityLayer);
+        }
+    } catch (error) { /* Map remains usable if geocoding is unavailable. */ }
+}));
+{% endif %}
+</script>
+{% endif %}
+{% endblock %}

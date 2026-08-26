@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block title %}{{ t('nav.dashboard') }} - FinSight AI{% endblock %}
+
+{% block content %}
+<div class="row align-items-center mb-4">
+    <div class="col-md-8">
+        <h1 class="mb-1">
+            <i class="fas fa-th-large"></i> {{ t('nav.dashboard') }}
+        </h1>
+        <p class="text-muted mb-0">
+            <i class="fas fa-building"></i> {{ company_name }}
+            &nbsp;|&nbsp;
+            <i class="fas fa-user"></i> {{ user_name }}
+        </p>
+    </div>
+    <div class="col-md-4 text-md-end">
+        <a href="{{ url_for('upload_file') }}" class="btn btn-primary">
+            <i class="fas fa-upload"></i> {{ t('dashboard.action.upload') }}
+        </a>
+        <form method="post" action="{{ url_for('logout') }}" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-outline-secondary"><i class="fas fa-sign-out-alt"></i> {{ t('dashboard.action.logout') }}</button>
+        </form>
+    </div>
+</div>
+
+<!-- KPI cards -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3 col-sm-6">
+        <div class="card kpi-card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <small class="text-muted"><i class="fas fa-receipt me-1"></i> {{ t('dashboard.kpi.transactions') }}</small>
+                <h3 class="mt-1 mb-0">{{ stats.rows }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6">
+        <div class="card kpi-card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <small class="text-muted"><i class="fas fa-arrow-trend-up me-1"></i> {{ t('dashboard.kpi.revenue_total') }}</small>
+                <h3 class="mt-1 mb-0 text-success">{{ format_currency(stats.revenue_total) }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6">
+        <div class="card kpi-card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <small class="text-muted"><i class="fas fa-wallet me-1"></i> {{ t('dashboard.kpi.expenses_total') }}</small>
+                <h3 class="mt-1 mb-0 text-danger">{{ format_currency(stats.expenses_total) }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6">
+        <div class="card kpi-card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <small class="text-muted"><i class="fas fa-coins me-1"></i> {{ t('dashboard.kpi.profit_total') }}</small>
+                <h3 class="mt-1 mb-0 text-primary">{{ format_currency(stats.profit_total) }}</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-6"><div class="card metric-card border-0 h-100"><div class="card-body d-flex justify-content-between align-items-center"><div><small class="text-muted">{{ t('dashboard.status.prediction') }}</small><h5 class="mb-0 mt-1">{{ t('dashboard.status.ready') if predictions else t('dashboard.status.no_predictions') }}</h5></div><i class="fas fa-wand-magic-sparkles fa-2x text-primary"></i></div></div></div>
+    <div class="col-md-6"><div class="card metric-card border-0 h-100"><div class="card-body d-flex justify-content-between align-items-center"><div><small class="text-muted">{{ t('dashboard.status.risk') }}</small>{% if risk_status %}<h5 class="mb-1 mt-1 risk-{{ risk_status.risk_level.split()[0]|lower }}">{% set level_key = 'risk.level.' ~ risk_status.risk_level.split()[0]|lower ~ '.label' %}{{ t(level_key, default=risk_status.risk_level) }}</h5><small class="text-muted">{{ risk_status.classification_date }}</small>{% else %}<h5 class="mb-0 mt-1">{{ t('dashboard.status.not_classified') }}</h5>{% endif %}</div><i class="fas fa-shield-halved fa-2x text-primary"></i></div></div></div>
+</div>
+
+{% if stats.date_range %}
+<div class="alert alert-info">
+    <i class="fas fa-calendar"></i> {{ t('dashboard.date_range.label') }} <strong>{{ stats.date_range }}</strong>
+</div>
+{% endif %}
+
+<div class="row g-4">
+    <!-- Recent uploads -->
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-gradient border-0">
+                <h5 class="mb-0"><i class="fas fa-file-upload"></i> {{ t('dashboard.recent_uploads.title') }}</h5>
+            </div>
+            <div class="card-body">
+                {% if uploads %}
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>{{ t('dashboard.table.file') }}</th>
+                                    <th>{{ t('dashboard.table.rows') }}</th>
+                                    <th>{{ t('dashboard.table.status') }}</th>
+                                    <th>{{ t('dashboard.table.when') }}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            {% for u in uploads %}
+                                <tr>
+                                    <td><i class="fas fa-file-csv text-primary"></i> {{ u.original_name }}</td>
+                                    <td>{{ u.rows_imported }}</td>
+                                    <td>
+                                        {% if u.status == 'processed' %}
+                                            <span class="badge bg-success">{{ t('dashboard.status.processed') }}</span>
+                                        {% elif u.status == 'failed' %}
+                                            <span class="badge bg-danger">{{ t('dashboard.status.failed') }}</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">{{ u.status }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td><small class="text-muted">{{ u.created_at }}</small></td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="text-muted mb-0">{{ t('dashboard.empty.uploads') }} <a href="{{ url_for('upload_file') }}">{{ t('dashboard.empty.uploads.cta') }}</a>.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent predictions -->
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-gradient border-0">
+                <h5 class="mb-0"><i class="fas fa-crystal-ball"></i> {{ t('dashboard.recent_predictions.title') }}</h5>
+            </div>
+            <div class="card-body">
+                {% if predictions %}
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>{{ t('dashboard.table.type') }}</th>
+                                    <th>{{ t('dashboard.table.date') }}</th>
+                                    <th>{{ t('dashboard.table.value') }}</th>
+                                    <th>{{ t('dashboard.table.when') }}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            {% for p in predictions %}
+                                <tr>
+                                    <td><span class="badge bg-primary">{% set mt_key = 'predict.model.' ~ p.prediction_type %}{{ t(mt_key) or p.prediction_type }}</span></td>
+                                    <td>{{ p.prediction_date }}</td>
+                                    <td><strong>{{ format_currency(p.predicted_value) }}</strong></td>
+                                    <td><small class="text-muted">{{ p.created_at }}</small></td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="text-muted mb-0">{{ t('dashboard.empty.predictions') }} <a href="{{ url_for('predict') }}">{{ t('dashboard.empty.predictions.cta') }}</a>.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick actions -->
+<div class="row g-3 mt-4">
+    <div class="col-md-3 col-sm-6">
+        <a href="{{ url_for('upload_file') }}" class="btn btn-primary w-100 py-3 quick-action">
+            <i class="fas fa-upload fa-2x d-block mb-2"></i> {{ t('dashboard.quick.upload') }}
+        </a>
+    </div>
+    <div class="col-md-3 col-sm-6">
+        <a href="{{ url_for('predict') }}" class="btn btn-warning w-100 py-3 quick-action">
+            <i class="fas fa-crystal-ball fa-2x d-block mb-2"></i> {{ t('dashboard.quick.predict') }}
+        </a>
+    </div>
+    <div class="col-md-3 col-sm-6">
+        <a href="{{ url_for('analytics') }}" class="btn btn-info w-100 py-3 text-white quick-action">
+            <i class="fas fa-chart-line fa-2x d-block mb-2"></i> {{ t('dashboard.quick.analytics') }}
+        </a>
+    </div>
+    <div class="col-md-3 col-sm-6">
+        <a href="{{ url_for('powerbi') }}" class="btn btn-outline-success w-100 py-3 quick-action">
+            <i class="fas fa-chart-pie fa-2x d-block mb-2"></i> {{ t('dashboard.quick.powerbi') }}
+        </a>
+    </div>
+</div>
+{% endblock %}

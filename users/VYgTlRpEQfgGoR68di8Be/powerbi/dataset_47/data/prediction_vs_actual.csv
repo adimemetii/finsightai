@@ -1,0 +1,9 @@
+Prediction_ID,Prediction_Type,Date,Actual,Predicted,Difference
+47,revenue,2026-09-05,,75343.33,
+48,profit,2026-09-05,,74613.35,
+49,expenses,2026-09-05,,11304.0,
+50,amount,2026-09-05,,15234.0,
+43,revenue,2028-12-26,,385117.46,
+44,profit,2028-12-26,,556573.78,
+45,expenses,2028-12-26,,10582.0,
+46,amount,2028-12-26,,13440.0,

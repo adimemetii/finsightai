@@ -1,0 +1,61 @@
+transaction_id,tx_date,description,amount,revenue,expenses,tx_type,category,payment_method,department,city,status
+TX201,2026-03-01,Product Sale,850,850,300,Sale,Retail,Cash,Sales,Gjilan,Completed
+TX202,2026-03-02,Online Order,12500,12500,4200,Sale,Ecommerce,Card,Sales,Prishtina,Completed
+TX203,2026-03-03,Equipment Purchase,18500,4200,18500,Expense,Equipment,Bank Transfer,Operations,Prizren,Completed
+TX204,2026-03-04,Consulting Service,7600,7600,1800,Sale,Services,Bank Transfer,Consulting,Ferizaj,Completed
+TX205,2026-03-05,Marketing Campaign,3200,9800,3200,Expense,Marketing,Card,Marketing,Prishtina,Completed
+TX206,2026-03-06,Product Sale,14500,14500,6100,Sale,Retail,Cash,Sales,Gjilan,Completed
+TX207,2026-03-07,Office Rent,6800,7200,6800,Expense,Rent,Bank Transfer,Administration,Prishtina,Completed
+TX208,2026-03-08,Online Order,2200,2200,850,Sale,Ecommerce,Card,Sales,Prizren,Completed
+TX209,2026-03-09,Service Payment,19800,19800,7200,Sale,Services,Bank Transfer,Sales,Ferizaj,Completed
+TX210,2026-03-10,Transport Cost,4100,5400,4100,Expense,Transport,Cash,Operations,Gjilan,Completed
+TX211,2026-03-11,Product Sale,6300,6300,2100,Sale,Retail,Card,Sales,Prishtina,Completed
+TX212,2026-03-12,Software Subscription,1200,6800,1200,Expense,Software,Card,IT,Prizren,Completed
+TX213,2026-03-13,Online Order,17500,17500,6900,Sale,Ecommerce,Card,Sales,Gjilan,Completed
+TX214,2026-03-14,Marketing Campaign,8900,11000,8900,Expense,Marketing,Bank Transfer,Marketing,Prishtina,Completed
+TX215,2026-03-15,Consulting Service,4200,4200,1300,Sale,Services,Cash,Consulting,Ferizaj,Completed
+TX216,2026-03-16,Equipment Purchase,27500,5100,27500,Expense,Equipment,Bank Transfer,Operations,Prizren,Completed
+TX217,2026-03-17,Product Sale,11200,11200,4300,Sale,Retail,Cash,Sales,Gjilan,Completed
+TX218,2026-03-18,Online Order,3900,3900,1500,Sale,Ecommerce,Card,Sales,Prishtina,Completed
+TX219,2026-03-19,Service Payment,24500,24500,9400,Sale,Services,Bank Transfer,Sales,Prizren,Completed
+TX220,2026-03-20,Office Supplies,2300,4100,2300,Expense,Office,Cash,Administration,Ferizaj,Completed
+TX221,2026-03-21,Product Sale,5200,5200,1900,Sale,Retail,Card,Sales,Gjilan,Completed
+TX222,2026-03-22,Marketing Campaign,15600,18200,15600,Expense,Marketing,Bank Transfer,Marketing,Prishtina,Completed
+TX223,2026-03-23,Online Order,9300,9300,3500,Sale,Ecommerce,Card,Sales,Prizren,Completed
+TX224,2026-03-24,Transport Cost,1700,3900,1700,Expense,Transport,Cash,Operations,Ferizaj,Completed
+TX225,2026-03-25,Consulting Service,31000,31000,11200,Sale,Services,Bank Transfer,Consulting,Gjilan,Completed
+TX226,2026-03-26,Product Sale,7800,7800,2800,Sale,Retail,Cash,Sales,Prishtina,Completed
+TX227,2026-03-27,Office Rent,7200,8500,7200,Expense,Rent,Bank Transfer,Administration,Prizren,Completed
+TX228,2026-03-28,Online Order,21500,21500,8200,Sale,Ecommerce,Card,Sales,Ferizaj,Completed
+TX229,2026-03-29,Software Subscription,3600,9400,3600,Expense,Software,Card,IT,Gjilan,Completed
+TX230,2026-03-30,Service Payment,12800,12800,4700,Sale,Services,Bank Transfer,Sales,Prishtina,Completed
+TX231,2026-04-01,Product Sale,2600,2600,900,Sale,Retail,Cash,Sales,Prizren,Completed
+TX232,2026-04-02,Online Order,28700,28700,10600,Sale,Ecommerce,Card,Sales,Gjilan,Completed
+TX233,2026-04-03,Equipment Purchase,42000,6800,42000,Expense,Equipment,Bank Transfer,Operations,Prishtina,Completed
+TX234,2026-04-04,Consulting Service,9200,9200,2800,Sale,Services,Bank Transfer,Consulting,Ferizaj,Completed
+TX235,2026-04-05,Marketing Campaign,24000,27500,24000,Expense,Marketing,Card,Marketing,Prizren,Completed
+TX236,2026-04-06,Product Sale,16800,16800,5900,Sale,Retail,Cash,Sales,Gjilan,Completed
+TX237,2026-04-07,Office Supplies,1900,3500,1900,Expense,Office,Card,Administration,Prishtina,Completed
+TX238,2026-04-08,Online Order,4600,4600,1700,Sale,Ecommerce,Card,Sales,Ferizaj,Completed
+TX239,2026-04-09,Service Payment,35200,35200,13100,Sale,Services,Bank Transfer,Sales,Prizren,Completed
+TX240,2026-04-10,Transport Cost,6200,7800,6200,Expense,Transport,Cash,Operations,Gjilan,Completed
+TX241,2026-04-11,Product Sale,10100,10100,3700,Sale,Retail,Card,Sales,Prishtina,Completed
+TX242,2026-04-12,Software Subscription,5400,11200,5400,Expense,Software,Card,IT,Ferizaj,Completed
+TX243,2026-04-13,Online Order,19200,19200,7200,Sale,Ecommerce,Card,Sales,Prizren,Completed
+TX244,2026-04-14,Marketing Campaign,4700,13500,4700,Expense,Marketing,Bank Transfer,Marketing,Gjilan,Completed
+TX245,2026-04-15,Consulting Service,61000,61000,22500,Sale,Services,Bank Transfer,Consulting,Prishtina,Completed
+TX246,2026-04-16,Product Sale,7300,7300,2500,Sale,Retail,Cash,Sales,Ferizaj,Completed
+TX247,2026-04-17,Equipment Purchase,31500,9000,31500,Expense,Equipment,Bank Transfer,Operations,Prizren,Completed
+TX248,2026-04-18,Online Order,5200,5200,1900,Sale,Ecommerce,Card,Sales,Gjilan,Completed
+TX249,2026-04-19,Service Payment,28500,28500,9800,Sale,Services,Bank Transfer,Sales,Prishtina,Completed
+TX250,2026-04-20,Office Rent,8100,9800,8100,Expense,Rent,Bank Transfer,Administration,Ferizaj,Completed
+TX251,2026-04-21,Product Sale,13800,13800,5100,Sale,Retail,Cash,Sales,Prizren,Completed
+TX252,2026-04-22,Marketing Campaign,19800,25000,19800,Expense,Marketing,Card,Marketing,Gjilan,Completed
+TX253,2026-04-23,Online Order,31400,31400,11800,Sale,Ecommerce,Card,Sales,Prishtina,Completed
+TX254,2026-04-24,Transport Cost,2800,6200,2800,Expense,Transport,Cash,Operations,Ferizaj,Completed
+TX255,2026-04-25,Consulting Service,47500,47500,16800,Sale,Services,Bank Transfer,Consulting,Prizren,Completed
+TX256,2026-04-26,Product Sale,5900,5900,2100,Sale,Retail,Cash,Sales,Gjilan,Completed
+TX257,2026-04-27,Software Subscription,7300,14500,7300,Expense,Software,Card,IT,Prishtina,Completed
+TX258,2026-04-28,Online Order,8300,8300,3100,Sale,Ecommerce,Card,Sales,Ferizaj,Completed
+TX259,2026-04-29,Service Payment,68000,68000,25500,Sale,Services,Bank Transfer,Sales,Gjilan,Completed
+TX260,2026-04-30,Equipment Purchase,52000,12000,52000,Expense,Equipment,Bank Transfer,Operations,Prishtina,Completed

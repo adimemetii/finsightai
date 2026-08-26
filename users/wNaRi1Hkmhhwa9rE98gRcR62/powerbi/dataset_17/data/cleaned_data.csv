@@ -1,0 +1,11 @@
+Date,Transaction_ID,Description,Amount,Revenue,Expenses,Profit,Transaction_Type,Category,Payment_Method,Department,City,Status,Upload_File_ID,User_ID,Imported_At,Company
+2026-01-01,T001,Software Sale,4500.0,4500.0,0.0,4500.0,,Sales,Bank Transfer,Sales,Prishtina,Completed,17,14,2026-08-21 15:04:22,Behari Petrol
+2026-01-02,T002,Office Rent,1800.0,0.0,1800.0,-1800.0,,Rent,Bank Transfer,Administration,Prishtina,Completed,17,14,2026-08-21 15:04:22,Behari Petrol
+2026-01-03,T003,Cloud Services,650.0,0.0,650.0,-650.0,,Technology,Credit Card,IT,Prishtina,Completed,17,14,2026-08-21 15:04:22,Behari Petrol
+2026-01-04,T004,Client Payment,7200.0,7200.0,0.0,7200.0,,Services,Bank Transfer,Sales,Gjilan,Completed,17,14,2026-08-21 15:04:22,Behari Petrol
+2026-01-05,T005,Employee Salary,3200.0,0.0,3200.0,-3200.0,,Salary,Bank Transfer,HR,Prishtina,Completed,17,14,2026-08-21 15:04:22,Behari Petrol
+2026-01-06,T006,Google Ads,800.0,0.0,800.0,-800.0,,Marketing,Credit Card,Marketing,Prishtina,Completed,17,14,2026-08-21 15:04:22,Behari Petrol
+2026-01-07,T007,Software License,5300.0,5300.0,0.0,5300.0,,Sales,Bank Transfer,Sales,Prizren,Completed,17,14,2026-08-21 15:04:22,Behari Petrol
+2026-01-08,T008,Internet Bill,180.0,0.0,180.0,-180.0,,Utilities,Bank Transfer,IT,Gjilan,Completed,17,14,2026-08-21 15:04:22,Behari Petrol
+2026-01-09,T009,Consulting Revenue,6100.0,6100.0,0.0,6100.0,,Services,Bank Transfer,Sales,Ferizaj,Completed,17,14,2026-08-21 15:04:22,Behari Petrol
+2026-01-10,T010,Computer Equipment,2400.0,0.0,2400.0,-2400.0,,Equipment,Credit Card,IT,Prishtina,Completed,17,14,2026-08-21 15:04:22,Behari Petrol

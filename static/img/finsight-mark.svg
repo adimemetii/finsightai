@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="FinSight AI">
+  <defs>
+    <linearGradient id="shell" x1="16" y1="12" x2="112" y2="116" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#252b38"/><stop offset=".48" stop-color="#11131a"/><stop offset="1" stop-color="#050507"/>
+    </linearGradient>
+    <linearGradient id="signal" x1="39" y1="93" x2="94" y2="31" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6e9ff0"/><stop offset=".52" stop-color="#b9d4ff"/><stop offset="1" stop-color="#fff"/>
+    </linearGradient>
+    <linearGradient id="facet" x1="33" y1="28" x2="91" y2="99" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#d8e7ff" stop-opacity=".24"/><stop offset="1" stop-color="#8db8ff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect x="5" y="5" width="118" height="118" rx="34" fill="#030304"/>
+  <rect x="7" y="7" width="114" height="114" rx="32" fill="url(#shell)" stroke="#586273" stroke-opacity=".5" stroke-width="2"/>
+  <path d="M22 45 64 20l42 25v39l-42 24-42-24V45Z" fill="url(#facet)" stroke="#8090a9" stroke-opacity=".18"/>
+  <path d="M31 85V45.5L64 26l33 19.5V85L64 104 31 85Z" fill="none" stroke="#9bb8e7" stroke-opacity=".2" stroke-width="1.5"/>
+  <path d="M39 88V47l25-14 25 14v34L64 95 39 88Z" fill="#07090e" stroke="#a9c8ff" stroke-opacity=".16"/>
+  <path d="M43 77.5V51.8L63.5 40l11.5 6.7-12 7-7.4 4.3v7.7h19.1v10.5H55.6v8.1L43 77.5Z" fill="url(#signal)"/>
+  <path d="m72.5 85 14.5-14.5" stroke="#bcd6ff" stroke-width="5" stroke-linecap="round" filter="url(#glow)"/>
+  <circle cx="89.5" cy="68.5" r="6.5" fill="#dceaff"/><circle cx="89.5" cy="68.5" r="3" fill="#5f91df"/>
+  <path d="M35 33h18" stroke="#d8e7ff" stroke-opacity=".55" stroke-width="2" stroke-linecap="round"/><path d="M75 101h15" stroke="#a9c8ff" stroke-opacity=".34" stroke-width="2" stroke-linecap="round"/>
+</svg>

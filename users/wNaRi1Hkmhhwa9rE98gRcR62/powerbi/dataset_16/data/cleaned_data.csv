@@ -1,0 +1,21 @@
+Date,Transaction_ID,Description,Amount,Revenue,Expenses,Profit,Transaction_Type,Category,Payment_Method,Department,City,Status,Upload_File_ID,User_ID,Imported_At,Company
+2026-01-05,TRX001,Software Subscription,850.0,12500.0,4200.0,8300.0,Income,Technology,Bank Transfer,IT,Prishtina,Completed,16,14,2026-08-21 14:53:10,Behari Petrol
+2026-01-08,TRX002,Office Equipment,1450.0,9800.0,3100.0,6700.0,Expense,Equipment,Credit Card,Operations,Gjilan,Completed,16,14,2026-08-21 14:53:10,Behari Petrol
+2026-01-12,TRX003,Marketing Campaign,2300.0,15400.0,5200.0,10200.0,Expense,Marketing,Bank Transfer,Marketing,Prizren,Completed,16,14,2026-08-21 14:53:10,Behari Petrol
+2026-01-18,TRX004,Client Payment,3200.0,18200.0,6100.0,12100.0,Income,Sales,Bank Transfer,Sales,Ferizaj,Completed,16,14,2026-08-21 14:53:10,Behari Petrol
+2026-01-23,TRX005,Travel Expenses,780.0,11300.0,3800.0,7500.0,Expense,Travel,Cash,Management,Peja,Pending,16,14,2026-08-21 14:53:10,Behari Petrol
+2026-02-02,TRX006,Web Development,4100.0,21500.0,7200.0,14300.0,Income,Services,Bank Transfer,IT,Prishtina,Completed,16,14,2026-08-21 14:53:10,Behari Petrol
+2026-02-07,TRX007,Office Rent,1800.0,9200.0,4600.0,4600.0,Expense,Operations,Bank Transfer,Operations,Gjilan,Completed,16,14,2026-08-21 14:53:10,Behari Petrol
+2026-02-14,TRX008,Product Sales,2750.0,16700.0,5400.0,11300.0,Income,Sales,Credit Card,Sales,Prizren,Completed,16,14,2026-08-21 14:53:10,Behari Petrol
+2026-02-21,TRX009,Advertising,1950.0,14300.0,4900.0,9400.0,Expense,Marketing,Credit Card,Marketing,Ferizaj,Completed,16,14,2026-08-21 14:53:10,Behari Petrol
+2026-03-03,TRX010,Consulting Service,5200.0,24600.0,8300.0,16300.0,Income,Services,Bank Transfer,Consulting,Prishtina,Completed,16,14,2026-08-21 14:53:10,Behari Petrol
+2026-03-09,TRX011,Cloud Hosting,1250.0,13700.0,4500.0,9200.0,Expense,Technology,Credit Card,IT,Peja,Completed,16,14,2026-08-21 14:53:10,Behari Petrol
+2026-03-16,TRX012,Equipment Sale,3600.0,19800.0,6700.0,13100.0,Income,Sales,Bank Transfer,Sales,Gjilan,Completed,16,14,2026-08-21 14:53:10,Behari Petrol
+2026-03-24,TRX013,Employee Training,920.0,12100.0,4100.0,8000.0,Expense,Training,Cash,HR,Prizren,Pending,16,14,2026-08-21 14:53:10,Behari Petrol
+2026-04-04,TRX014,Annual Contract,6100.0,28900.0,9100.0,19800.0,Income,Contracts,Bank Transfer,Sales,Ferizaj,Completed,16,14,2026-08-21 14:53:10,Behari Petrol
+2026-04-11,TRX015,Office Supplies,640.0,10500.0,3500.0,7000.0,Expense,Operations,Cash,Operations,Prishtina,Completed,16,14,2026-08-21 14:53:10,Behari Petrol
+2026-04-19,TRX016,Mobile App Project,4700.0,23100.0,7600.0,15500.0,Income,Technology,Bank Transfer,IT,Gjilan,Completed,16,14,2026-08-21 14:53:10,Behari Petrol
+2026-04-27,TRX017,Social Media Ads,1750.0,15600.0,5100.0,10500.0,Expense,Marketing,Credit Card,Marketing,Peja,Completed,16,14,2026-08-21 14:53:10,Behari Petrol
+2026-05-06,TRX018,Customer Subscription,3900.0,20400.0,6900.0,13500.0,Income,Services,Bank Transfer,Sales,Prizren,Completed,16,14,2026-08-21 14:53:10,Behari Petrol
+2026-05-14,TRX019,Server Upgrade,2850.0,17400.0,6200.0,11200.0,Expense,Technology,Bank Transfer,IT,Ferizaj,Pending,16,14,2026-08-21 14:53:10,Behari Petrol
+2026-05-22,TRX020,Business Consulting,5500.0,26700.0,8700.0,18000.0,Income,Consulting,Bank Transfer,Consulting,Prishtina,Completed,16,14,2026-08-21 14:53:10,Behari Petrol
