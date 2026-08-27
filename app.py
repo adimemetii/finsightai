@@ -87,6 +87,8 @@ except ImportError as e:
     print(f"[finsight] Warning: Could not import i18n: {e}")
     i18n = None
 
+from init_db import create_tables as create_database_tables
+
 
 # =====================================================
 # Configuration
@@ -564,80 +566,19 @@ def inject_security_context():
 # Database initialization
 # =====================================================
 def init_database() -> None:
-    """Verify connectivity and apply the small runtime schema upgrade."""
+    """Create or upgrade the complete schema without modifying existing data."""
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        for table, column, definition in (
-            ("uploaded_files", "version", "INT NOT NULL DEFAULT 1 AFTER company_id"),
-            ("uploaded_files", "source_format", "VARCHAR(12) NULL AFTER stored_name"),
-            ("uploaded_files", "source_columns", "LONGTEXT NULL AFTER source_format"),
-            ("uploaded_files", "column_mapping", "LONGTEXT NULL AFTER source_columns"),
-            ("uploaded_files", "cleaning_summary", "LONGTEXT NULL AFTER column_mapping"),
-            ("uploaded_files", "upload_warnings", "LONGTEXT NULL AFTER cleaning_summary"),
-            ("predictions", "actual_value", "DECIMAL(18, 2) NULL AFTER prediction_date"),
-            ("predictions", "prediction_error", "DECIMAL(18, 2) NULL AFTER predicted_value"),
-            ("financial_data", "customers", "DECIMAL(18, 2) NULL AFTER profit"),
-            ("financial_data", "marketing_spend", "DECIMAL(18, 2) NULL AFTER customers"),
-        ):
-            cur.execute(
-                """SELECT COUNT(*) FROM information_schema.columns
-                   WHERE table_schema = DATABASE() AND table_name = %s AND column_name = %s""",
-                (table, column),
-            )
-            if not cur.fetchone()[0]:
-                cur.execute(f"ALTER TABLE `{table}` ADD COLUMN `{column}` {definition}")
-        cur.execute(
-            """CREATE TABLE IF NOT EXISTS powerbi_desktop_reports (
-                report_id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id INT NOT NULL,
-                uploaded_file_id INT NOT NULL,
-                pbix_filename VARCHAR(255) NOT NULL,
-                status VARCHAR(40) NOT NULL DEFAULT 'generated',
-                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                UNIQUE KEY uq_desktop_report_file (uploaded_file_id),
-                INDEX idx_desktop_report_user (user_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
-        )
-        cur.execute(
-            """CREATE TABLE IF NOT EXISTS risk_classifications (
-                risk_id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id INT NOT NULL, company_id INT NOT NULL, uploaded_file_id INT NOT NULL,
-                classification_date DATE NOT NULL, risk_level VARCHAR(20) NOT NULL,
-                revenue DECIMAL(18,2) NULL, expenses DECIMAL(18,2) NULL,
-                profit DECIMAL(18,2) NULL, amount DECIMAL(18,2) NULL,
-                explanation TEXT NULL, model_name VARCHAR(80) NOT NULL DEFAULT 'decision_tree_classifier',
-                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                INDEX idx_risk_user_file_date (user_id, uploaded_file_id, classification_date)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"""
-        )
-        cur.execute(
-            """CREATE TABLE IF NOT EXISTS dataset_rows (
-                row_id            BIGINT AUTO_INCREMENT PRIMARY KEY,
-                user_id           INT NOT NULL,
-                company_id        INT NOT NULL,
-                uploaded_file_id  INT NOT NULL,
-                row_number        INT NOT NULL,
-                row_data          LONGTEXT NOT NULL,
-                created_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                CONSTRAINT fk_dataset_rows_user FOREIGN KEY (user_id)
-                    REFERENCES users(id) ON DELETE CASCADE,
-                CONSTRAINT fk_dataset_rows_company FOREIGN KEY (company_id)
-                    REFERENCES companies(id) ON DELETE CASCADE,
-                CONSTRAINT fk_dataset_rows_file FOREIGN KEY (uploaded_file_id)
-                    REFERENCES uploaded_files(id) ON DELETE CASCADE,
-                UNIQUE KEY uq_dataset_row (uploaded_file_id, row_number),
-                INDEX idx_dataset_rows_user_file (user_id, uploaded_file_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"""
-        )
-        conn.commit()
-        cur.close()
-        conn.close()
-        print("[finsight] Database connection OK.")
+        create_database_tables()
+        print("[finsight] Database schema ready.")
     except mysql.connector.Error as err:
-        print(f"[finsight] WARNING: cannot connect to MySQL: {err}")
-        print("[finsight] Run `python init_db.py` to create the schema.")
+        app.logger.error(
+            "Database schema initialization failed: %s: %s",
+            type(err).__name__,
+            err,
+            exc_info=(type(err), err, err.__traceback__),
+        )
+    except (RuntimeError, ValueError) as err:
+        app.logger.error("Database schema configuration failed: %s", err)
 
 
 # =====================================================
@@ -2656,8 +2597,9 @@ def server_error(_):
 # =====================================================
 # Entry point
 # =====================================================
+init_database()
+
 if __name__ == "__main__":
-    init_database()
     host = _env("FLASK_RUN_HOST", "0.0.0.0")
     port = _int_env("PORT", _int_env("FLASK_RUN_PORT", 5000))
     debug = _bool_env("FLASK_DEBUG", False)

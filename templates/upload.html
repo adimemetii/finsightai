@@ -3,240 +3,137 @@
 
 {% block content %}
 <div class="row">
-    <div class="col-lg-8 mx-auto">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h1 class="mb-0"><i class="fas fa-upload"></i> {{ t('upload.heading') }}</h1>
-            <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">
-                <i class="fas fa-arrow-left"></i> {{ t('upload.back') }}
-            </a>
-        </div>
-        <p class="text-muted">
-            <i class="fas fa-building"></i> {{ t('upload.uploading_for') }} <strong>{{ company_name }}</strong>
-        </p>
-
-        <details class="upload-guide mb-4">
-            <summary><span><i class="fas fa-circle-info me-2"></i>Si t’i përgatis të dhënat për import?</span><i class="fas fa-chevron-down guide-chevron"></i></summary>
-            <div class="upload-guide-content">
-                <div class="row g-4">
-                    <div class="col-lg-7">
-                        <h2 class="h5 mb-2">Format i rekomanduar</h2>
-                        <p class="text-muted small mb-3">Ngarko një skedar <strong>CSV, XLSX ose XLS</strong>, me titujt e kolonave në rreshtin e parë. Kolonat mund të jenë në shqip ose anglisht; FinSight AI njeh emra të zakonshëm si <code>Date</code>, <code>Revenue</code>, <code>Expenses</code> dhe <code>Profit</code>.</p>
-                        <div class="table-responsive"><table class="table table-sm mb-0 upload-sample-table"><thead><tr><th>Date</th><th>Revenue</th><th>Expenses</th><th>Profit</th><th>Category</th></tr></thead><tbody><tr><td>2026-01-15</td><td>12500.00</td><td>7300.00</td><td>5200.00</td><td>Sales</td></tr><tr><td>2026-02-15</td><td>14800.00</td><td>8100.00</td><td>6700.00</td><td>Sales</td></tr></tbody></table></div>
-                    </div>
-                    <div class="col-lg-5">
-                        <h2 class="h5 mb-2">Për import pa probleme</h2>
-                        <ul class="upload-guide-list small mb-0">
-                            <li>Përdor data të vlefshme, p.sh. <code>2026-01-15</code>.</li>
-                            <li>Vlerat monetare shkruaji si numra: <code>12500.50</code>, pa simbol monedhe.</li>
-                            <li>Mos bashko qeliza dhe mos vendos rreshta bosh mes të dhënave.</li>
-                            <li>Ruaje Excel-in si <strong>.xlsx</strong>, ose CSV me ndarje me presje.</li>
-                            <li>Për parashikime financiare duhen të paktën 10 rreshta me data dhe vlera numerike.</li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-        </details>
-
-        <div class="card shadow-lg border-0 mt-3">
-            <div class="card-body p-5">
-                <div class="upload-area" id="uploadArea" role="button" tabindex="0" aria-controls="fileInput" aria-describedby="uploadHelp">
-                    <div class="text-center py-5">
-                        <i class="fas fa-cloud-upload-alt fa-3x text-primary mb-3"></i>
-                        <h5>{{ t('upload.dropzone.h5') }}</h5>
-                        <p class="text-muted">{{ t('upload.dropzone.or') }}</p>
-                        <p class="small text-muted" id="uploadHelp">{{ t('upload.dropzone.supported') }}</p>
-                    </div>
-                    <input type="file" id="fileInput" class="d-none" accept=".csv,.xlsx,.xls">
-                </div>
-
-                <div id="fileInfo" class="mt-4 d-none">
-                    <div class="alert alert-info mb-3">
-                        <i class="fas fa-info-circle"></i> {{ t('upload.file.selected') }} <strong id="fileName"></strong>
-                    </div>
-                </div>
-
-                <div id="uploadProgress" class="mt-4 d-none">
-                    <div class="progress mb-3">
-                        <div class="progress-bar progress-bar-animated" id="progressBar" style="width: 0%"></div>
-                    </div>
-                    <p class="text-muted small">{{ t('upload.processing.label') }}</p>
-                </div>
-
-                <div class="d-grid gap-2 mt-4">
-                    <button class="btn btn-primary btn-lg" id="uploadBtn" disabled>
-                        <i class="fas fa-check-circle"></i> {{ t('upload.submit') }}
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Stats after success -->
-        <div id="statsSection" class="d-none mt-4">
-            <h2 class="mb-3"><i class="fas fa-chart-bar"></i> {{ t('upload.stats.title') }}</h2>
-            <div class="row g-3">
-                <div class="col-md-4">
-                    <div class="card stat-card border-0 shadow-sm">
-                        <div class="card-body">
-                            <h6 class="card-title">{{ t('upload.stats.rows') }}</h6>
-                            <p class="stat-value" id="statRows">0</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card stat-card border-0 shadow-sm">
-                        <div class="card-body">
-                            <h6 class="card-title" id="statMetricLabel">{{ t('upload.stats.summary') }}</h6>
-                            <p class="stat-value text-success" id="statRevenueTotal">—</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card stat-card border-0 shadow-sm">
-                        <div class="card-body">
-                            <h6 class="card-title">{{ t('upload.stats.target') }}</h6>
-                            <p class="stat-value text-primary h4" id="statPredictionTarget">—</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="card mt-3"><div class="card-body"><h3 class="h5">{{ t('upload.stats.summary') }}</h3><div id="datasetDetails" class="small text-muted">{{ t('upload.stats.summary_empty') }}</div></div></div>
-            <div class="alert alert-success mt-4">
-                <i class="fas fa-check-circle"></i> {{ t('upload.success') }}
-                <a href="{{ url_for('predict') }}" class="alert-link">{{ t('upload.success.predict_cta') }}</a> {{ t('common.loading', default='or') and '' }}<a href="{{ url_for('dashboard') }}" class="alert-link">{{ t('upload.success.dashboard_cta') }}</a>.
-            </div>
-        </div>
-
-        <div id="errorAlert" class="alert alert-danger d-none mt-4" role="alert" aria-live="assertive">
-            <i class="fas fa-exclamation-circle"></i> <strong>{{ t('upload.error.label') }}</strong> <span id="errorMessage"></span>
-        </div>
+  <div class="col-xl-10 mx-auto">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+      <div><div class="page-pretitle">FinSight AI</div><h1 class="mb-1"><i class="fas fa-cloud-arrow-up text-primary me-2"></i>Upload Data</h1><p class="text-muted mb-0">Import business data for {{ company_name }}. FinSight AI will explain how it mapped your columns before saving anything.</p></div>
+      <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary"><i class="fas fa-arrow-left me-2"></i>{{ t('upload.back') }}</a>
     </div>
+
+    <div class="row g-3 mb-4">
+      <div class="col-md-7"><div class="card h-100"><div class="card-body"><h2 class="h5">Supported business files</h2><p class="text-muted small mb-2">CSV, XLSX, XLS, and JSON files up to 16 MB. Column names can vary; the mapper uses names, types, and values.</p><p class="small mb-0"><strong>For the complete financial workflow:</strong> Date and Revenue are required. Expenses, Profit, Customers, Category, Department, City, Payment Method, and Marketing Spend are recommended or optional.</p></div></div></div>
+      <div class="col-md-5"><div class="card h-100"><div class="card-body"><h2 class="h5">Download templates</h2><p class="text-muted small">Each template is accepted by this same upload flow.</p><div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('download_business_template', template_name='general', file_format='csv') }}">General CSV</a><a class="btn btn-sm btn-outline-primary" href="{{ url_for('download_business_template', template_name='general', file_format='xlsx') }}">General XLSX</a>
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('download_business_template', template_name='retail', file_format='csv') }}">Retail CSV</a><a class="btn btn-sm btn-outline-secondary" href="{{ url_for('download_business_template', template_name='retail', file_format='xlsx') }}">Retail XLSX</a>
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('download_business_template', template_name='service', file_format='csv') }}">Service CSV</a><a class="btn btn-sm btn-outline-secondary" href="{{ url_for('download_business_template', template_name='service', file_format='xlsx') }}">Service XLSX</a>
+      </div></div></div></div>
+    </div>
+
+    <div class="card shadow-lg border-0">
+      <div class="card-body p-4 p-lg-5">
+        <div class="upload-area" id="uploadArea" role="button" tabindex="0" aria-controls="fileInput" aria-describedby="uploadHelp">
+          <div class="text-center py-4"><i class="fas fa-file-import fa-3x text-primary mb-3"></i><h2 class="h5">Drag and drop your file here</h2><p class="text-muted mb-2">or click to browse</p><p class="small text-muted mb-0" id="uploadHelp">CSV · XLSX · XLS · JSON · max 16 MB</p></div>
+          <input type="file" id="fileInput" class="d-none" accept=".csv,.xlsx,.xls,.json,text/csv,application/json">
+        </div>
+        <div id="fileInfo" class="alert alert-info mt-4 d-none"><i class="fas fa-file me-2"></i><strong id="fileName"></strong><span id="fileSize" class="small ms-2"></span></div>
+        <div class="d-flex flex-wrap gap-2 mt-4"><button class="btn btn-outline-primary" id="inspectBtn" disabled><i class="fas fa-magnifying-glass me-2"></i>Inspect columns</button><button class="btn btn-primary" id="uploadBtn" disabled><i class="fas fa-check-circle me-2"></i>Save and process</button></div>
+        <div id="uploadProgress" class="mt-4 d-none"><div class="progress"><div class="progress-bar progress-bar-striped progress-bar-animated" id="progressBar" style="width: 0%"></div></div><p class="text-muted small mt-2 mb-0">Processing the dataset…</p></div>
+      </div>
+    </div>
+
+    <div id="mappingSection" class="card mt-4 d-none"><div class="card-header bg-gradient"><h2 class="h5 mb-0"><i class="fas fa-diagram-project me-2"></i>What FinSight AI understood</h2></div><div class="card-body"><p class="text-muted small">High-confidence matches are selected automatically. Review uncertain matches and change any field before saving.</p><div id="mappingTable" class="table-responsive"></div><div id="mappingWarnings" class="mt-3"></div></div></div>
+    <div id="previewSection" class="card mt-4 d-none"><div class="card-header bg-gradient"><h2 class="h5 mb-0"><i class="fas fa-table me-2"></i>Data preview</h2></div><div class="card-body"><div id="previewStats" class="small text-muted mb-3"></div><div id="previewTable" class="table-responsive"></div></div></div>
+    <div id="statsSection" class="card mt-4 d-none"><div class="card-header bg-gradient"><h2 class="h5 mb-0"><i class="fas fa-broom me-2"></i>Cleaning summary</h2></div><div class="card-body"><div id="cleaningSummary" class="row g-3"></div><div id="successMessage" class="alert alert-success mt-3 mb-0"></div></div></div>
+    <div id="errorAlert" class="alert alert-danger d-none mt-4" role="alert" aria-live="assertive"><i class="fas fa-exclamation-circle me-2"></i><span id="errorMessage"></span></div>
+  </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-    const uploadArea = document.getElementById('uploadArea');
-    const fileInput = document.getElementById('fileInput');
-    const uploadBtn = document.getElementById('uploadBtn');
-    const fileInfo = document.getElementById('fileInfo');
-    const fileName = document.getElementById('fileName');
-    const uploadProgress = document.getElementById('uploadProgress');
-    const progressBar = document.getElementById('progressBar');
-    const statsSection = document.getElementById('statsSection');
-    const errorAlert = document.getElementById('errorAlert');
-    const errorMessage = document.getElementById('errorMessage');
+const uploadArea = document.getElementById('uploadArea');
+const fileInput = document.getElementById('fileInput');
+const inspectBtn = document.getElementById('inspectBtn');
+const uploadBtn = document.getElementById('uploadBtn');
+const fileInfo = document.getElementById('fileInfo');
+const fileName = document.getElementById('fileName');
+const fileSize = document.getElementById('fileSize');
+const uploadProgress = document.getElementById('uploadProgress');
+const progressBar = document.getElementById('progressBar');
+const mappingSection = document.getElementById('mappingSection');
+const previewSection = document.getElementById('previewSection');
+const statsSection = document.getElementById('statsSection');
+const errorAlert = document.getElementById('errorAlert');
+const errorMessage = document.getElementById('errorMessage');
+const fieldSpecs = {{ field_specs|tojson }};
+let selectedFile = null;
+let latestProfile = null;
 
-    const i18n = window.FINSIGHT_I18N || {};
-    const T = (key, fallback) => (i18n[key] !== undefined ? i18n[key] : (fallback || key));
+const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
+const formatNumber = value => new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(Number(value) || 0);
+const showError = message => { errorMessage.textContent = message; errorAlert.classList.remove('d-none'); };
+const hideError = () => errorAlert.classList.add('d-none');
+const formatBytes = bytes => bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 
-    uploadArea.addEventListener('click', () => fileInput.click());
-    uploadArea.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            fileInput.click();
-        }
-    });
+function setFile(file) {
+  if (!file) return;
+  if (!/\.(csv|xlsx|xls|json)$/i.test(file.name)) { showError('Choose a CSV, XLSX, XLS, or JSON file.'); return; }
+  if (file.size > 16 * 1024 * 1024) { showError('File is too large. Maximum size is 16 MB.'); return; }
+  selectedFile = file; latestProfile = null; hideError();
+  fileName.textContent = file.name; fileSize.textContent = `(${formatBytes(file.size)})`;
+  fileInfo.classList.remove('d-none'); inspectBtn.disabled = false; uploadBtn.disabled = true;
+  mappingSection.classList.add('d-none'); previewSection.classList.add('d-none'); statsSection.classList.add('d-none');
+}
 
-    fileInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            if (!/\.(csv|xlsx|xls)$/i.test(file.name)) {
-                errorMessage.textContent = T('upload.js.invalid_file', 'Choose a CSV, XLSX, or XLS file.');
-                errorAlert.classList.remove('d-none');
-                uploadBtn.disabled = true;
-                return;
-            }
-            fileName.textContent = file.name;
-            fileInfo.classList.remove('d-none');
-            uploadBtn.disabled = false;
-        }
-    });
+uploadArea.addEventListener('click', () => fileInput.click());
+uploadArea.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); fileInput.click(); } });
+fileInput.addEventListener('change', event => setFile(event.target.files[0]));
+uploadArea.addEventListener('dragover', event => { event.preventDefault(); uploadArea.classList.add('dragover'); });
+uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+uploadArea.addEventListener('drop', event => { event.preventDefault(); uploadArea.classList.remove('dragover'); setFile(event.dataTransfer.files[0]); });
 
-    uploadArea.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        uploadArea.classList.add('dragover');
-    });
-    uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
-    uploadArea.addEventListener('drop', (e) => {
-        e.preventDefault();
-        uploadArea.classList.remove('dragover');
-        fileInput.files = e.dataTransfer.files;
-        const file = e.dataTransfer.files[0];
-        if (file) {
-            if (!/\.(csv|xlsx|xls)$/i.test(file.name)) {
-                errorMessage.textContent = T('upload.js.invalid_file', 'Choose a CSV, XLSX, or XLS file.');
-                errorAlert.classList.remove('d-none');
-                uploadBtn.disabled = true;
-                return;
-            }
-            fileName.textContent = file.name;
-            fileInfo.classList.remove('d-none');
-            uploadBtn.disabled = false;
-        }
-    });
+function renderMapping(profile) {
+  const columns = profile.column_names || [];
+  const fields = profile.detected?.fields || {};
+  document.getElementById('mappingTable').innerHTML = `<table class="table table-sm align-middle mb-0"><thead><tr><th>Business field</th><th>Source column</th><th>Confidence</th><th>Why it is used</th></tr></thead><tbody>${Object.entries(fieldSpecs).map(([field, spec]) => {
+    const detail = fields[field] || {}; const selected = detail.source || profile.mapping?.[field] || '';
+    const options = ['<option value="">Not mapped</option>', ...columns.map(column => `<option value="${escapeHtml(column)}" ${column === selected ? 'selected' : ''}>${escapeHtml(column)}</option>`)].join('');
+    const tone = detail.confidence === 'high' ? 'success' : detail.confidence === 'medium' ? 'warning' : 'secondary';
+    const candidateText = (detail.candidates || []).slice(0, 2).map(item => `${item.source} (${item.confidence})`).join(', ') || 'No confident candidate';
+    return `<tr><td><strong>${escapeHtml(spec.label)}</strong><br><small class="text-muted">${escapeHtml(spec.priority)}</small></td><td><select class="form-select form-select-sm mapping-select" data-field="${escapeHtml(field)}">${options}</select></td><td><span class="badge bg-${tone}">${escapeHtml(detail.confidence || 'missing')}</span></td><td><small class="text-muted">${escapeHtml(candidateText)}</small></td></tr>`;
+  }).join('')}</tbody></table>`;
+  document.querySelectorAll('.mapping-select').forEach(select => select.addEventListener('change', () => { uploadBtn.disabled = false; }));
+  const columnsText = columns.map(column => `<span class="badge bg-secondary me-1 mb-1">${escapeHtml(column)}</span>`).join('');
+  const warnings = (profile.warnings || []).map(warning => `<div class="alert alert-warning py-2 mb-2"><i class="fas fa-triangle-exclamation me-2"></i>${escapeHtml(warning)}</div>`).join('');
+  document.getElementById('mappingWarnings').innerHTML = `${warnings}<div class="small text-muted mt-2">Detected columns: ${columnsText}</div>`;
+}
 
-    uploadBtn.addEventListener('click', async () => {
-        const file = fileInput.files[0];
-        if (!file) return;
+function renderPreview(profile) {
+  const rows = profile.preview || []; const columns = rows.length ? Object.keys(rows[0]) : (profile.column_names || []);
+  document.getElementById('previewStats').innerHTML = `Rows detected: <strong>${formatNumber(profile.rows)}</strong> · Columns detected: <strong>${formatNumber(profile.columns)}</strong> · Rows after cleaning preview: <strong>${formatNumber(profile.cleaning?.rows_after_cleaning)}</strong>`;
+  document.getElementById('previewTable').innerHTML = rows.length ? `<table class="table table-sm"><thead><tr>${columns.map(column => `<th>${escapeHtml(column)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${columns.map(column => `<td>${escapeHtml(row[column] === null || row[column] === undefined ? '—' : row[column])}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '<p class="text-muted mb-0">No preview rows are available.</p>';
+}
 
-        const maxSize = 16 * 1024 * 1024;
-        if (file.size > maxSize) {
-            errorMessage.textContent = T('upload.js.too_large', '{{ t('upload.js.too_large') }}');
-            errorAlert.classList.remove('d-none');
-            return;
-        }
+inspectBtn.addEventListener('click', async () => {
+  if (!selectedFile) return;
+  const formData = new FormData(); formData.append('file', selectedFile); inspectBtn.disabled = true; hideError();
+  try {
+    const response = await axios.post('{{ url_for("upload_preview") }}', formData, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 });
+    latestProfile = response.data.profile; renderMapping(latestProfile); renderPreview(latestProfile);
+    mappingSection.classList.remove('d-none'); previewSection.classList.remove('d-none'); uploadBtn.disabled = false;
+  } catch (error) { showError(error.response?.data?.error || 'We could not inspect this file.'); }
+  finally { inspectBtn.disabled = false; }
+});
 
-        const formData = new FormData();
-        formData.append('file', file);
+function currentMapping() {
+  return Object.fromEntries([...document.querySelectorAll('.mapping-select')].filter(select => select.value).map(select => [select.dataset.field, select.value]));
+}
 
-        uploadProgress.classList.remove('d-none');
-        uploadBtn.disabled = true;
-        errorAlert.classList.add('d-none');
-        statsSection.classList.add('d-none');
-        progressBar.style.width = '0%';
+function renderCleaning(stats) {
+  const facts = [['Rows saved', stats.rows], ['Columns detected', stats.columns], ['Duplicates removed', stats.duplicates_removed], ['Blank rows removed', stats.blank_rows_removed], ['Invalid dates', stats.invalid_dates], ['Missing values remaining', stats.missing_values_remaining]];
+  document.getElementById('cleaningSummary').innerHTML = facts.map(([label, value]) => `<div class="col-sm-6 col-lg-4"><div class="border rounded p-3 h-100"><small class="text-muted">${label}</small><div class="h4 mb-0 mt-1">${formatNumber(value)}</div></div></div>`).join('');
+  const warningText = (stats.warnings || []).length ? `<br><small>${stats.warnings.map(escapeHtml).join(' ')}</small>` : '';
+  document.getElementById('successMessage').innerHTML = `<i class="fas fa-check-circle me-2"></i>Dataset saved and ready for visualizations and forecasting.${warningText}`;
+}
 
-        try {
-            const response = await axios.post('{{ url_for("upload_file") }}', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' },
-                onUploadProgress: (e) => {
-                    progressBar.style.width = Math.round((e.loaded * 100) / e.total) + '%';
-                },
-                timeout: 60000,
-            });
-
-            if (response.data.success) {
-                const s = response.data.stats;
-                document.getElementById('statRows').textContent = s.rows;
-                const metric = s.top_metric || s.prediction_target || T('upload.stats.summary', '{{ t('upload.stats.summary') }}');
-                document.getElementById('statMetricLabel').textContent = String(metric).replaceAll('_', ' ');
-                document.getElementById('statRevenueTotal').textContent = s.top_metric_total !== undefined
-                    ? new Intl.NumberFormat(undefined, {maximumFractionDigits: 2}).format(Number(s.top_metric_total))
-                    : '—';
-                document.getElementById('statPredictionTarget').textContent = (s.prediction_target || T('upload.stats.not_detected', '{{ t('upload.stats.not_detected') }}')).replaceAll('_', ' ');
-                const notDetected = T('upload.stats.not_detected', '{{ t('upload.stats.not_detected') }}');
-                const noneText = T('upload.stats.none', '{{ t('upload.stats.none') }}');
-                const escapeHtml = (value) => String(value).replace(/[&<>'"]/g, (char) => ({
-                    '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
-                })[char]);
-                document.getElementById('datasetDetails').innerHTML =
-                    `${T('upload.stats.rows_label', '{{ t('upload.stats.rows_label') }}')} <strong>${s.rows}</strong> · ` +
-                    `${T('upload.stats.columns_label', '{{ t('upload.stats.columns_label') }}')} <strong>${s.columns}</strong> · ` +
-                    `${T('upload.stats.date_label', '{{ t('upload.stats.date_label') }}')} <strong>${escapeHtml(s.date_column || notDetected)}</strong><br>` +
-                    `${T('upload.stats.numeric_label', '{{ t('upload.stats.numeric_label') }}')} <strong>${escapeHtml((s.numeric_columns || []).join(', ') || noneText)}</strong><br>` +
-                    `${T('upload.stats.categorical_label', '{{ t('upload.stats.categorical_label') }}')} <strong>${escapeHtml((s.categorical_columns || []).join(', ') || noneText)}</strong>`;
-                uploadProgress.classList.add('d-none');
-                statsSection.classList.remove('d-none');
-                fileInput.value = '';
-                fileInfo.classList.add('d-none');
-            }
-        } catch (error) {
-            const msg = error.response?.data?.error || error.message || T('upload.js.unknown_error', '{{ t('upload.js.unknown_error') }}');
-            errorMessage.textContent = msg;
-            errorAlert.classList.remove('d-none');
-            uploadProgress.classList.add('d-none');
-        } finally {
-            uploadBtn.disabled = false;
-        }
-    });
+uploadBtn.addEventListener('click', async () => {
+  if (!selectedFile || !latestProfile) { showError('Inspect the file before saving it.'); return; }
+  const formData = new FormData(); formData.append('file', selectedFile); formData.append('mapping', JSON.stringify(currentMapping()));
+  uploadBtn.disabled = true; inspectBtn.disabled = true; uploadProgress.classList.remove('d-none'); progressBar.style.width = '0%'; hideError();
+  try {
+    const response = await axios.post('{{ url_for("upload_file") }}', formData, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000, onUploadProgress: event => { if (event.total) progressBar.style.width = `${Math.round(event.loaded * 100 / event.total)}%`; } });
+    renderCleaning(response.data.stats); statsSection.classList.remove('d-none'); progressBar.style.width = '100%';
+  } catch (error) { showError(error.response?.data?.error || 'We could not process this file.'); }
+  finally { uploadProgress.classList.add('d-none'); uploadBtn.disabled = false; inspectBtn.disabled = false; }
+});
 </script>
 {% endblock %}
