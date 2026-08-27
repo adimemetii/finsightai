@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Profile / Settings - FinSight AI{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+  <div>
+    <div class="page-pretitle">FinSight AI</div>
+    <h1 class="mb-1"><i class="fas fa-sliders text-primary me-2"></i>Profile / Settings</h1>
+    <p class="text-muted mb-0">Review the account and upload settings used for this workspace.</p>
+  </div>
+  <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary"><i class="fas fa-arrow-left me-2"></i>Back to dashboard</a>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-6">
+    <section class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-gradient border-0"><h2 class="h5 mb-0"><i class="fas fa-user me-2"></i>Account profile</h2></div>
+      <div class="card-body">
+        <dl class="row mb-0">
+          <dt class="col-sm-4 text-muted">Name</dt><dd class="col-sm-8">{{ account.name }}</dd>
+          <dt class="col-sm-4 text-muted">Email</dt><dd class="col-sm-8">{{ account.email or 'Not available' }}</dd>
+          <dt class="col-sm-4 text-muted">Company</dt><dd class="col-sm-8">{{ account.company_name }}</dd>
+          <dt class="col-sm-4 text-muted">Member since</dt><dd class="col-sm-8">{{ account.created_at or 'Not available' }}</dd>
+        </dl>
+      </div>
+    </section>
+  </div>
+  <div class="col-lg-6">
+    <section class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-gradient border-0"><h2 class="h5 mb-0"><i class="fas fa-file-arrow-up me-2"></i>Data workspace</h2></div>
+      <div class="card-body">
+        <dl class="row mb-0">
+          <dt class="col-sm-5 text-muted">Supported formats</dt><dd class="col-sm-7">{{ supported_formats }}</dd>
+          <dt class="col-sm-5 text-muted">Maximum file size</dt><dd class="col-sm-7">{{ max_upload_mb }} MB</dd>
+          <dt class="col-sm-5 text-muted">Current language</dt><dd class="col-sm-7">{{ current_locale|upper }}</dd>
+          <dt class="col-sm-5 text-muted">Data isolation</dt><dd class="col-sm-7">Company workspace</dd>
+        </dl>
+        <a href="{{ url_for('upload_file') }}" class="btn btn-primary mt-3"><i class="fas fa-cloud-arrow-up me-2"></i>Upload data</a>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="alert alert-info mt-4"><i class="fas fa-circle-info me-2"></i>Use the language selector in the header to change the interface language. Your password is stored as a secure hash and is never displayed here.</div>
+{% endblock %}
