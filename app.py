@@ -887,40 +887,13 @@ def signup():
                 )
                 company_id = cur.lastrowid
 
-            # Create the user using only columns present in the existing table.
-            insert_columns = []
-            insert_values = []
-            display_column = user_columns.get("display")
-            if display_column:
-                insert_columns.append(display_column)
-                insert_values.append(name)
-            else:
-                name_parts = name.split(maxsplit=1)
-                first_column = user_columns.get("first_name")
-                last_column = user_columns.get("last_name")
-                if first_column:
-                    insert_columns.append(first_column)
-                    insert_values.append(name_parts[0])
-                if last_column:
-                    insert_columns.append(last_column)
-                    insert_values.append(name_parts[1] if len(name_parts) > 1 else "")
-
-            insert_columns.extend((email_column, password_column))
-            insert_values.extend((email, generate_password_hash(password)))
-            company_column = user_columns.get("company_id")
-            if company_column:
-                insert_columns.append(company_column)
-                insert_values.append(company_id)
-            role_column = user_columns.get("role")
-            if role_column:
-                insert_columns.append(role_column)
-                insert_values.append("user")
-
-            column_sql = ", ".join(_quote_identifier(column) for column in insert_columns)
-            value_sql = ", ".join(["%s"] * len(insert_values))
+            name_parts = name.split(maxsplit=1)
+            first_name = name_parts[0]
+            last_name = name_parts[1] if len(name_parts) > 1 else ""
             cur.execute(
-                f"INSERT INTO users ({column_sql}) VALUES ({value_sql})",
-                tuple(insert_values),
+                "INSERT INTO users (firstName, lastName, email, password, role) "
+                "VALUES (%s, %s, %s, %s, %s)",
+                (first_name, last_name, email, generate_password_hash(password), "user"),
             )
             user_id = cur.lastrowid
             conn.commit()
