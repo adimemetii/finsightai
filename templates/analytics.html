@@ -45,10 +45,10 @@
 </div>
 
 <div class="row g-4">
-    <div class="col-xl-8"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0"><h5 class="mb-0"><i class="fas fa-chart-area"></i> {{ t('analytics.trend') }}</h5></div><div class="card-body"><canvas id="trendChart"></canvas></div></div></div>
-    <div class="col-xl-4"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0"><h5 class="mb-0"><i class="fas fa-chart-pie"></i> {{ t('analytics.category.title', category=category_label|default(t('analytics.kpi.amount'))) }}</h5></div><div class="card-body"><canvas id="categoryChart"></canvas>{% if not categories %}<p class="text-muted text-center mt-3">{{ t('analytics.category.empty') }}</p>{% endif %}</div></div></div>
-    <div class="col-xl-6"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0"><h5 class="mb-0"><i class="fas fa-chart-column"></i> {{ t('analytics.totals') }}</h5></div><div class="card-body"><canvas id="totalsChart"></canvas></div></div></div>
-    <div class="col-xl-6"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0"><h5 class="mb-0"><i class="fas fa-city"></i> {{ t('analytics.city') }}</h5></div><div class="card-body p-2">{% if cities %}<div id="cityMap"></div>{% else %}<div class="d-flex align-items-center justify-content-center h-100 text-muted p-5">{{ t('analytics.city.empty') }}</div>{% endif %}</div></div></div>
+    {% if has_trend %}<div class="col-xl-8"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0"><h5 class="mb-0"><i class="fas fa-chart-area"></i> {{ t('analytics.trend') }}</h5></div><div class="card-body"><canvas id="trendChart"></canvas></div></div></div>{% endif %}
+    {% if has_categories %}<div class="col-xl-4"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0"><h5 class="mb-0"><i class="fas fa-chart-pie"></i> {{ t('analytics.category.title', category=category_label|default(t('analytics.kpi.amount'))) }}</h5></div><div class="card-body"><canvas id="categoryChart"></canvas></div></div></div>{% endif %}
+    {% if has_totals %}<div class="col-xl-6"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0"><h5 class="mb-0"><i class="fas fa-chart-column"></i> {{ t('analytics.totals') }}</h5></div><div class="card-body"><canvas id="totalsChart"></canvas></div></div></div>{% endif %}
+    {% if has_cities %}<div class="col-xl-6"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0"><h5 class="mb-0"><i class="fas fa-city"></i> {{ t('analytics.city') }}</h5></div><div class="card-body p-2"><div id="cityMap"></div></div></div></div>{% endif %}
 </div>
 {% endif %}
 {% endblock %}
@@ -86,24 +86,24 @@ const chartDataset = trendKeys.map((key, i) => ({
     fill: true, tension: .35
 }));
 
-new Chart(document.getElementById('trendChart'), {
+{% if has_trend %}new Chart(document.getElementById('trendChart'), {
     type: 'line',
     data: { labels: monthly.map(row => row.period), datasets: chartDataset },
     options: {responsive: true, maintainAspectRatio: false, interaction: {intersect: false, mode: 'index'}, scales: {y: {ticks: {callback: money}, grid: {color: 'rgba(255,255,255,.08)'}}, x: {grid: {display: false}}}}
-});
+});{% endif %}
 
-new Chart(document.getElementById('categoryChart'), {
+{% if has_categories %}new Chart(document.getElementById('categoryChart'), {
     type: 'doughnut', data: {labels: categories.map(row => row.category), datasets: [{data: categories.map(row => row.amount), backgroundColor: trendColors, borderColor: '#16161a', borderWidth: 3}]},
     options: {responsive: true, plugins: {legend: {position: 'bottom'}, tooltip: {callbacks: {label: context => context.label + ': ' + money(context.raw)}}}}
-});
+});{% endif %}
 
 const totalKeys = Object.keys(totals);
 const totalLabels = totalKeys.map(localizedLabel);
 const totalColors = ['#16a34a','#dc2626','#2563eb','#f59e0b','#7c3aed','#0891b2'];
-new Chart(document.getElementById('totalsChart'), {
+{% if has_totals %}new Chart(document.getElementById('totalsChart'), {
     type: 'bar', data: {labels: totalLabels, datasets: [{label: T('analytics.chart.total_label', 'Total'), data: totalKeys.map(k => totals[k]), backgroundColor: totalColors.slice(0, totalKeys.length), borderRadius: 6}]},
     options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {display: false}}, scales: {y: {ticks: {callback: money}, grid: {color: 'rgba(255,255,255,.08)'}}, x: {grid: {display: false}}}}
-});
+});{% endif %}
 
 {% if cities %}
 const map = L.map('cityMap').setView([20, 0], 2);
