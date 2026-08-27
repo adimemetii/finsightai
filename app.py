@@ -302,24 +302,8 @@ def run_query(sql: str, params: tuple | list | None = None, *, fetchone=False, f
         conn.close()
 
 
-# Existing Aiven databases may use firstName/lastName/password instead of
-# the newer name/password_hash/company_id names in this repository. Read the
-# live users-table column names and only interpolate values from this fixed
-# alias map; no production schema is altered.
-_USER_COLUMN_ALIASES = {
-    "display": ("name", "full_name", "username", "user_name", "display_name"),
-    "first_name": ("firstName", "first_name", "firstname"),
-    "last_name": ("lastName", "last_name", "lastname"),
-    "email": ("email", "email_address"),
-    "password": ("password_hash", "password", "passwd", "hashed_password"),
-    "company_id": ("company_id", "companyId"),
-    "role": ("role", "user_role"),
-    "created_at": ("created_at", "createdAt"),
-}
-
 # This is the schema contract declared in init_db.py. Metadata discovery is
-# retained for older deployments, but authentication must still work when the
-# MySQL account cannot read information_schema rows for its own users table.
+# not needed for authentication or account creation.
 _REPOSITORY_USER_COLUMNS = {
     "display": "name",
     "email": "email",
@@ -333,44 +317,15 @@ def _quote_identifier(value: str) -> str:
     return "`" + value.replace("`", "``") + "`"
 
 
-def _find_user_columns(cursor) -> dict[str, str]:
-    cursor.execute(
-        """
-        SELECT column_name
-        FROM information_schema.columns
-        WHERE table_schema = DATABASE() AND table_name = 'users'
-        """
-    )
-    rows = cursor.fetchall()
-    available = {}
-    for row in rows:
-        value = row.get("column_name") if isinstance(row, dict) else row[0]
-        if value:
-            available[str(value).lower()] = str(value)
-
-    result = {}
-    for logical_name, aliases in _USER_COLUMN_ALIASES.items():
-        for alias in aliases:
-            actual = available.get(alias.lower())
-            if actual:
-                result[logical_name] = actual
-                break
-    return result
-
-
 def _load_user_columns() -> dict[str, str]:
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    try:
-        discovered = _find_user_columns(cursor)
-        if {"email", "password"}.issubset(discovered):
-            return discovered
-        # init_db.py is the source of truth for the current schema. Do not
-        # make a failed metadata lookup look like a missing users field.
-        return dict(_REPOSITORY_USER_COLUMNS)
-    finally:
-        cursor.close()
-        conn.close()
+    """Return the users columns declared by the repository schema.
+
+    Authentication and account creation must not depend on an optional
+    information_schema read. ``init_db.py`` is the schema contract used by
+    this application, so use it directly and fail with the real SQL error if
+    the deployment is running a different, incompatible database schema.
+    """
+    return dict(_REPOSITORY_USER_COLUMNS)
 
 
 def _user_display_expression(columns: dict[str, str], qualifier: str = "u") -> str:
