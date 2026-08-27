@@ -302,6 +302,46 @@ def run_query(sql: str, params: tuple | list | None = None, *, fetchone=False, f
         conn.close()
 
 
+# Existing Aiven databases may have been created before the current schema
+# called the display-name field ``name``. Read the actual column instead of
+# altering that table during signup or login. Identifiers are restricted to
+# this allow-list before they are interpolated into SQL.
+_USER_DISPLAY_COLUMNS = ("name", "full_name", "username", "user_name", "display_name")
+
+
+def _find_user_display_column(cursor) -> str | None:
+    placeholders = ", ".join(["%s"] * len(_USER_DISPLAY_COLUMNS))
+    cursor.execute(
+        f"""
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = DATABASE()
+          AND table_name = 'users'
+          AND column_name IN ({placeholders})
+        ORDER BY FIELD(column_name, {placeholders})
+        LIMIT 1
+        """,
+        _USER_DISPLAY_COLUMNS + _USER_DISPLAY_COLUMNS,
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    value = row.get("column_name") if isinstance(row, dict) else row[0]
+    return value if value in _USER_DISPLAY_COLUMNS else None
+
+
+def _user_display_select() -> str:
+    """Return a safe SELECT expression aliased as ``name`` for app code."""
+    conn = get_db()
+    try:
+        cursor = conn.cursor(dictionary=True)
+        column = _find_user_display_column(cursor)
+        cursor.close()
+    finally:
+        conn.close()
+    return f"u.`{column}` AS name" if column else "NULL AS name"
+
+
 # =====================================================
 # Per-request in-memory data
 # =====================================================
@@ -796,13 +836,23 @@ def signup():
                 company_id = cur.lastrowid
 
             # Create the user
-            cur.execute(
-                """
-                INSERT INTO users (name, email, password_hash, company_id)
-                VALUES (%s, %s, %s, %s)
-                """,
-                (name, email, generate_password_hash(password), company_id),
-            )
+            display_column = _find_user_display_column(cur)
+            if display_column:
+                cur.execute(
+                    f"""
+                    INSERT INTO users (`{display_column}`, email, password_hash, company_id)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (name, email, generate_password_hash(password), company_id),
+                )
+            else:
+                cur.execute(
+                    """
+                    INSERT INTO users (email, password_hash, company_id)
+                    VALUES (%s, %s, %s)
+                    """,
+                    (email, generate_password_hash(password), company_id),
+                )
             user_id = cur.lastrowid
             conn.commit()
             cur.close()
@@ -845,8 +895,8 @@ def login():
             return render_template("login.html")
 
         row = run_query(
-            """
-            SELECT u.id, u.name, u.password_hash, u.company_id, c.company_name
+            f"""
+            SELECT u.id, {_user_display_select()}, u.password_hash, u.company_id, c.company_name
             FROM users u
             JOIN companies c ON c.id = u.company_id
             WHERE u.email = %s
@@ -1897,7 +1947,7 @@ def database():
 def settings():
     """Show the signed-in account and active application settings."""
     account = run_query(
-        """SELECT u.name, u.email, u.created_at, c.company_name
+        f"""SELECT {_user_display_select()}, u.email, u.created_at, c.company_name
            FROM users u JOIN companies c ON c.id = u.company_id
            WHERE u.id=%s""",
         (_session_user_id(),), fetchone=True,
