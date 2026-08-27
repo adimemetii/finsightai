@@ -361,7 +361,13 @@ def _numeric_series(series: pd.Series) -> pd.Series:
     # Support common currency symbols and accounting negatives without adding
     # a locale-specific parser dependency.
     negative = text.str.startswith("(") & text.str.endswith(")")
-    text = text.str.replace(r"[\$€£¥]", "", regex=True)
+    text = text.str.replace(r"[$€£¥]", "", regex=True)
+    text = text.str.replace(r"\s+", "", regex=True)
+    european = text.str.match(r"^-?\d{1,3}(?:\.\d{3})+,\d+$", na=False)
+    text.loc[european] = (
+        text.loc[european].str.replace(".", "", regex=False)
+        .str.replace(",", ".", regex=False)
+    )
     text = text.str.replace(",", "", regex=False).str.replace("(", "", regex=False).str.replace(")", "", regex=False)
     values = pd.to_numeric(text, errors="coerce")
     return values.where(~negative, -values.abs())
@@ -374,8 +380,19 @@ def clean_dataframe(df: pd.DataFrame, mapping: dict[str, str] | None = None) -> 
 
     original_rows = int(len(df))
     work = apply_mapping(df, mapping)
+    # Treat whitespace-only cells as empty before removing blank rows/columns.
+    # This is especially important for Excel exports with formatting beyond
+    # the actual data range.
+    work = work.replace(r"^\s*$", np.nan, regex=True)
     work = work.dropna(how="all").copy()
     blank_rows_removed = original_rows - int(len(work))
+    work = work.dropna(axis=1, how="all").copy()
+
+    for column in CANONICAL_TEXT_FIELDS:
+        if column in work.columns:
+            work[column] = work[column].map(
+                lambda value: value.strip() if isinstance(value, str) else value
+            )
 
     numeric_invalid = 0
     for column in CANONICAL_NUMERIC_FIELDS:

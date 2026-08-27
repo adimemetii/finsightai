@@ -89,7 +89,8 @@ function renderMapping(profile) {
     const options = ['<option value="">Not mapped</option>', ...columns.map(column => `<option value="${escapeHtml(column)}" ${column === selected ? 'selected' : ''}>${escapeHtml(column)}</option>`)].join('');
     const tone = detail.confidence === 'high' ? 'success' : detail.confidence === 'medium' ? 'warning' : 'secondary';
     const candidateText = (detail.candidates || []).slice(0, 2).map(item => `${item.source} (${item.confidence})`).join(', ') || 'No confident candidate';
-    return `<tr><td><strong>${escapeHtml(spec.label)}</strong><br><small class="text-muted">${escapeHtml(spec.priority)}</small></td><td><select class="form-select form-select-sm mapping-select" data-field="${escapeHtml(field)}">${options}</select></td><td><span class="badge bg-${tone}">${escapeHtml(detail.confidence || 'missing')}</span></td><td><small class="text-muted">${escapeHtml(candidateText)}</small></td></tr>`;
+    const confidence = String(detail.confidence || 'missing').trim() || 'missing';
+    return `<tr><td><strong>${escapeHtml(spec.label)}</strong><br><small class="text-muted">${escapeHtml(spec.priority)}</small></td><td><select class="form-select form-select-sm mapping-select" data-field="${escapeHtml(field)}">${options}</select></td><td><span class="badge confidence-badge bg-${tone}">${escapeHtml(confidence)}</span></td><td><small class="text-muted">${escapeHtml(candidateText)}</small></td></tr>`;
   }).join('')}</tbody></table>`;
   document.querySelectorAll('.mapping-select').forEach(select => select.addEventListener('change', () => { uploadBtn.disabled = false; }));
   const columnsText = columns.map(column => `<span class="badge bg-secondary me-1 mb-1">${escapeHtml(column)}</span>`).join('');

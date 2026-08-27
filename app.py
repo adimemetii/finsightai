@@ -703,6 +703,51 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     return apply_mapping(df, detect_columns(df).get("mapping", {}))
 
 
+def _excel_first_row_is_data(frame: pd.DataFrame) -> bool:
+    """Detect an Excel sheet whose first row is data rather than a header."""
+    if frame is None or frame.empty:
+        return False
+
+    aliases = {
+        alias.casefold()
+        for spec in FIELD_SPECS.values()
+        for alias in spec.get("aliases", [])
+    }
+    header_names = {
+        re.sub(r"[^a-z0-9]+", "_", str(column).strip().casefold()).strip("_")
+        for column in frame.columns
+    }
+    if header_names & aliases:
+        return False
+    header_values = pd.Series(list(frame.columns), dtype="string").str.strip()
+    header_numeric = pd.to_numeric(header_values, errors="coerce").notna()
+    header_blank = header_values.eq("") | header_values.str.match(r"^Unnamed", case=False, na=False)
+    if not bool((header_numeric | header_blank).any()):
+        return False
+
+    first_row = frame.iloc[0]
+    non_empty = first_row.dropna()
+    if non_empty.empty:
+        return True
+    numeric_count = int(pd.to_numeric(non_empty, errors="coerce").notna().sum())
+    # A normal header row is textual. Multiple numeric values in the first row
+    # are therefore a strong signal that pandas consumed a real data row as the
+    # header (the common shape of an uncleaned Excel export).
+    return numeric_count >= 2
+
+
+def _read_excel_upload(source: str | Path | io.BytesIO) -> pd.DataFrame:
+    """Read normal Excel headers while preserving headerless data exports."""
+    frame = pd.read_excel(source)
+    if not _excel_first_row_is_data(frame):
+        return frame
+    if hasattr(source, "seek"):
+        source.seek(0)
+    frame = pd.read_excel(source, header=None)
+    frame.columns = [f"column_{index + 1}" for index in range(len(frame.columns))]
+    return frame
+
+
 def _read_upload_dataframe(source: str | Path | io.BytesIO, filename: str) -> pd.DataFrame:
     """Read one supported upload format into a bounded dataframe."""
     extension = Path(filename).suffix.lower()
@@ -719,7 +764,7 @@ def _read_upload_dataframe(source: str | Path | io.BytesIO, filename: str) -> pd
                 source.seek(0)
             frame = pd.read_csv(source, encoding="latin-1", sep=None, engine="python")
     elif extension in {".xlsx", ".xls"}:
-        frame = pd.read_excel(source)
+        frame = _read_excel_upload(source)
     elif extension == ".json":
         if hasattr(source, "seek"):
             source.seek(0)
@@ -1195,6 +1240,8 @@ def analytics():
     types = analysis.get("types") or {}
     canonical_order = ["revenue", "expenses", "profit", "amount", "customers", "marketing_spend"]
     typed_numeric = [name for name, kind in types.items() if kind == "numeric"]
+    typed_dimensions = [name for name, kind in types.items()
+                        if kind in {"categorical", "text"}]
     numeric_columns = []
     for column in canonical_order + typed_numeric:
         if column in working.columns and column not in numeric_columns:
@@ -1219,7 +1266,7 @@ def analytics():
             monthly_frame = dated.groupby("_period", as_index=False)[trend_keys].sum(min_count=1)
             monthly = monthly_frame.rename(columns={"_period": "period"}).to_dict("records")
 
-    category_col = next((name for name in ("category", "department", "city", "payment_method", "status", *typed_numeric)
+    category_col = next((name for name in ("category", "department", "city", "payment_method", "status", *typed_dimensions)
                          if name in working.columns and types.get(name, "categorical") in {"categorical", "text"}
                          and working[name].notna().any()), None)
     value_col = next((name for name in ["revenue", "expenses", "profit", "amount", *numeric_columns]
@@ -1276,7 +1323,21 @@ def upload_preview():
         return jsonify({"error": "Uploaded file is too large. Maximum size is 16MB."}), 413
     try:
         frame = _read_upload_dataframe(io.BytesIO(contents), filename)
-        profile = profile_dataframe(frame)
+        detection = detect_columns(frame)
+        preview_mapping = _add_generic_prediction_mapping(
+            frame, detection, detection.get("mapping", {})
+        )
+        profile = profile_dataframe(frame, preview_mapping)
+        # Mark inferred mappings explicitly so the review table does not show
+        # a blank-looking status for a valid generic numeric/date fallback.
+        for field, source in preview_mapping.items():
+            detail = profile.get("detected", {}).get("fields", {}).get(field)
+            if detail and not detail.get("source"):
+                detail["source"] = source
+                detail["confidence"] = "low"
+                detail["candidates"] = detail.get("candidates") or [
+                    {"source": source, "confidence": "low"}
+                ]
         return jsonify({"success": True, "profile": profile})
     except (ValueError, pd.errors.ParserError, OSError) as exc:
         return jsonify({"error": str(exc) or "We could not read this file."}), 400
@@ -1425,8 +1486,9 @@ def upload_file():
         train_df = cleaned_df.copy()
         train_df["tx_date"] = pd.to_datetime(train_df["tx_date"], errors="coerce")
         train_df = train_df.dropna(subset=["tx_date"])
+        active_frame = train_df if not train_df.empty else cleaned_df.copy()
         session_data[user_id] = {
-            "df": train_df,
+            "df": active_frame,
             "dataset_id": file_id,
             "models": {"amount": None, "expenses": None, "revenue": None, "profit": None, "risk": None},
         }
