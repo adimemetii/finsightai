@@ -604,6 +604,18 @@ def _valid_email(value: str) -> bool:
     return bool(local and domain and "." in domain and not domain.startswith(".") and not domain.endswith("."))
 
 
+def _password_matches(stored_hash: object, password: str) -> bool:
+    """Verify a stored Werkzeug hash without allowing malformed data to raise."""
+    if not isinstance(stored_hash, str) or not stored_hash or not password:
+        return False
+    try:
+        return bool(check_password_hash(stored_hash, password))
+    except (AttributeError, TypeError, ValueError):
+        # A missing, truncated, or legacy non-Werkzeug value is not a valid
+        # credential. Never turn it into a successful login or a server error.
+        return False
+
+
 def csrf_token() -> str:
     """Return a session-bound token for state-changing browser requests."""
     token = session.get("_csrf_token")
@@ -950,42 +962,62 @@ def login():
             flash("Enter a valid email address.", "danger")
             return render_template("login.html")
 
-        user_columns = _load_user_columns()
-        email_column = user_columns.get("email")
-        password_column = user_columns.get("password")
-        if not email_column or not password_column:
-            flash("The users table is missing its email or password field.", "danger")
-            return render_template("login.html")
+        try:
+            user_columns = _load_user_columns()
+            email_column = user_columns.get("email")
+            password_column = user_columns.get("password")
+            if not email_column or not password_column:
+                flash("The users table is missing its email or password field.", "danger")
+                return render_template("login.html")
 
-        company_column = user_columns.get("company_id")
-        if company_column:
-            company_sql = f"u.{_quote_identifier(company_column)} AS company_id, c.company_name"
-            company_join = "JOIN companies c ON c.id = u." + _quote_identifier(company_column)
-        else:
-            company_sql = "NULL AS company_id, '' AS company_name"
-            company_join = ""
-        row = run_query(
-            f"""
-            SELECT u.id, {_user_display_expression(user_columns)},
-                   u.{_quote_identifier(password_column)} AS password_hash,
-                   {company_sql}
-            FROM users u
-            {company_join}
-            WHERE u.{_quote_identifier(email_column)} = %s
-            """,
-            (email,),
-            fetchone=True,
-        )["row"]
+            company_column = user_columns.get("company_id")
+            if company_column:
+                company_sql = f"u.{_quote_identifier(company_column)} AS company_id, c.company_name"
+                # A user row must not disappear merely because its company
+                # lookup is unavailable; the checked-in schema enforces the
+                # relationship, while LEFT JOIN keeps auth failure explicit
+                # for any pre-existing data that does not.
+                company_join = "LEFT JOIN companies c ON c.id = u." + _quote_identifier(company_column)
+            else:
+                company_sql = "NULL AS company_id, '' AS company_name"
+                company_join = ""
+            query_result = run_query(
+                f"""
+                SELECT u.id, {_user_display_expression(user_columns)},
+                       u.{_quote_identifier(password_column)} AS password_hash,
+                       {company_sql}
+                FROM users u
+                {company_join}
+                WHERE u.{_quote_identifier(email_column)} = %s
+                """,
+                (email,),
+                fetchone=True,
+            )
+            row = query_result.get("row") if isinstance(query_result, dict) else None
+        except mysql.connector.Error as exc:
+            app.logger.error(
+                "Login database lookup failed: %s: %s",
+                type(exc).__name__,
+                exc,
+                exc_info=(type(exc), exc, exc.__traceback__),
+            )
+            flash("Database connection failed. Please try again later.", "danger")
+            return render_template("login.html"), 503
+        except RuntimeError as exc:
+            app.logger.error("Login database configuration failed: %s", exc)
+            flash("Database connection failed. Please try again later.", "danger")
+            return render_template("login.html"), 503
 
-        if not row or not check_password_hash(row["password_hash"], password):
+        if not isinstance(row, dict) or not row.get("id") or not _password_matches(row.get("password_hash"), password):
             flash("Invalid email or password.", "danger")
             return render_template("login.html")
 
         display_name = row.get("name") or email
+        session.clear()
         session["user_id"] = row["id"]
         session["user_name"] = display_name
-        session["company_id"] = row["company_id"]
-        session["company_name"] = row["company_name"] or ""
+        session["company_id"] = row.get("company_id")
+        session["company_name"] = row.get("company_name") or ""
         flash(f"Welcome back, {display_name}!", "success")
         return redirect(url_for("dashboard"))
 
