@@ -433,8 +433,54 @@ def _current_dataset_id(user_id: int) -> int | None:
     return int(row["id"]) if row else None
 
 
+def _dataset_rows_frame(user_id: int, dataset_id: int | None = None) -> pd.DataFrame:
+    """Restore the cleaned row JSON for one user and optional upload."""
+    rows = run_query(
+        """SELECT row_data FROM dataset_rows
+           WHERE user_id=%s AND (%s IS NULL OR uploaded_file_id=%s)
+           ORDER BY uploaded_file_id, `row_number`""",
+        (user_id, dataset_id, dataset_id), fetchall=True,
+    )["rows"] or []
+    records = []
+    for row in rows:
+        try:
+            record = json.loads(row.get("row_data") or "")
+        except (TypeError, ValueError):
+            continue
+        if isinstance(record, dict):
+            records.append(record)
+    return pd.DataFrame(records)
+
+
 def _load_active_cleaned_dataset(user_id: int, dataset_id: int) -> pd.DataFrame:
     """Rebuild the active upload's cleaned frame and its models from owned rows."""
+    try:
+        restored = _dataset_rows_frame(user_id, dataset_id)
+    except Exception as exc:
+        print(f"[finsight] Could not restore dataset rows: {exc}")
+        restored = pd.DataFrame()
+    if not restored.empty:
+        _run_universal_analysis(user_id, restored)
+        active = restored.copy()
+        has_date = "tx_date" in active.columns
+        if has_date:
+            active["tx_date"] = pd.to_datetime(active["tx_date"], errors="coerce")
+            dated = active.dropna(subset=["tx_date"]).copy()
+        else:
+            dated = active.copy()
+        if has_date and not dated.empty:
+            dated["Date_Number"] = (dated["tx_date"] - dated["tx_date"].min()).dt.days
+            dated["Month"] = dated["tx_date"].dt.month
+            dated["Day_of_Week"] = dated["tx_date"].dt.dayofweek
+        session_data[user_id] = {
+            "df": dated if has_date and not dated.empty else active,
+            "dataset_id": dataset_id,
+            "models": {"amount": None, "expenses": None, "revenue": None, "profit": None, "risk": None},
+        }
+        if has_date and not dated.empty:
+            _train_models_for(user_id, dated)
+        return dated if has_date and not dated.empty else active
+
     rows = run_query(
         """SELECT tx_date, transaction_id, description, amount, revenue, expenses, profit,
                   customers, marketing_spend, tx_type, category, payment_method, department, city, status
@@ -445,32 +491,16 @@ def _load_active_cleaned_dataset(user_id: int, dataset_id: int) -> pd.DataFrame:
     )["rows"] or []
     df = pd.DataFrame(rows)
     if df.empty:
-        # Generic datasets are durable in dataset_rows, while the normalized
-        # financial table remains the compatibility layer for legacy exports.
-        try:
-            generic_rows = run_query(
-                """SELECT row_data FROM dataset_rows
-                WHERE user_id=%s AND uploaded_file_id=%s ORDER BY `row_number`""",
-                (user_id, dataset_id), fetchall=True,
-            )["rows"] or []
-            records = [json.loads(row["row_data"]) for row in generic_rows]
-            if records:
-                restored = pd.DataFrame(records)
-                _run_universal_analysis(user_id, restored)
-                df = restored
-        except Exception as exc:
-            print(f"[finsight] Could not restore generic dataset: {exc}")
         # Keep the older sidecar as a backward-compatible fallback for uploads
         # created before dataset_rows was introduced.
-        if df.empty:
-            try:
-                path = _analysis_store_path(user_id)
-                if path is not None and path.exists():
-                    side = pd.read_csv(path)
-                    _run_universal_analysis(user_id, side)
-                    df = side
-            except Exception as exc:
-                print(f"[finsight] Could not restore universal analysis: {exc}")
+        try:
+            path = _analysis_store_path(user_id)
+            if path is not None and path.exists():
+                side = pd.read_csv(path)
+                _run_universal_analysis(user_id, side)
+                df = side
+        except Exception as exc:
+            print(f"[finsight] Could not restore universal analysis: {exc}")
         # Generic uploads have no canonical financial rows.  Record ownership
         # anyway so navigation does not repeatedly discard their restored
         # universal analysis and incorrectly show the upload-required state.
@@ -724,21 +754,64 @@ def _mapping_from_request() -> dict[str, str]:
     return {str(key): str(value).strip() for key, value in payload.items() if value}
 
 
+def _add_generic_prediction_mapping(raw_df: pd.DataFrame, detection: dict,
+                                    mapping: dict[str, str]) -> dict[str, str]:
+    """Give non-standard uploads a usable date and numeric forecast target."""
+    selected = dict(mapping)
+    used_sources = set(selected.values())
+    candidates = detection.get("columns", []) if isinstance(detection, dict) else []
+
+    if not selected.get("tx_date"):
+        for candidate in candidates:
+            source = str(candidate.get("source") or "").strip()
+            if candidate.get("type") != "date" or not source or source in used_sources:
+                continue
+            selected["tx_date"] = source
+            used_sources.add(source)
+            break
+
+    if not any(selected.get(field) for field in ("amount", "revenue", "expenses", "profit")):
+        source_columns = {str(column).strip(): column for column in raw_df.columns}
+        for candidate in candidates:
+            source = str(candidate.get("source") or "").strip()
+            normalized = str(candidate.get("normalized") or "").lower()
+            if (candidate.get("type") != "numeric" or not source or source in used_sources
+                    or normalized == "id" or normalized.endswith("_id")):
+                continue
+            try:
+                source_values = raw_df[source_columns.get(source, source)]
+                values = pd.to_numeric(source_values, errors="coerce")
+                if values.notna().sum() < 3:
+                    text_values = source_values.astype("string").str.strip()
+                    negative = text_values.str.startswith("(") & text_values.str.endswith(")")
+                    text_values = text_values.str.replace(r"[^0-9+\-.()]", "", regex=True)
+                    text_values = text_values.str.replace("(", "", regex=False).str.replace(")", "", regex=False)
+                    values = pd.to_numeric(text_values, errors="coerce")
+                    values = values.where(~negative, -values.abs())
+            except (KeyError, TypeError, ValueError):
+                continue
+            if values.notna().sum() < 3 or values.nunique(dropna=True) < 2:
+                continue
+            selected["amount"] = source
+            break
+    return selected
+
+
 BUSINESS_TEMPLATE_ROWS = {
     "general": [
-        {"Date": "2026-01-05", "Transaction_ID": "GEN-1001", "Description": "Product sale", "Revenue": 12500, "Expenses": 7300, "Profit": 5200, "Customers": 84, "Category": "Sales", "Department": "Commercial", "Payment_Method": "Card", "City": "Berlin", "Status": "Completed"},
-        {"Date": "2026-02-05", "Transaction_ID": "GEN-1002", "Description": "Subscription renewal", "Revenue": 14800, "Expenses": 8100, "Profit": 6700, "Customers": 96, "Category": "Subscriptions", "Department": "Commercial", "Payment_Method": "Transfer", "City": "Berlin", "Status": "Completed"},
-        {"Date": "2026-03-05", "Transaction_ID": "GEN-1003", "Description": "Product sale", "Revenue": 16100, "Expenses": 8950, "Profit": 7150, "Customers": 103, "Category": "Sales", "Department": "Commercial", "Payment_Method": "Card", "City": "Munich", "Status": "Completed"},
+        {"Date": "2026-01-05", "Transaction_ID": "GEN-1001", "Description": "Product sale", "Revenue": 12500, "Amount": 12500, "Expenses": 7300, "Profit": 5200, "Customers": 84, "Category": "Sales", "Department": "Commercial", "Payment_Method": "Card", "City": "Berlin", "Status": "Completed"},
+        {"Date": "2026-02-05", "Transaction_ID": "GEN-1002", "Description": "Subscription renewal", "Revenue": 14800, "Amount": 14800, "Expenses": 8100, "Profit": 6700, "Customers": 96, "Category": "Subscriptions", "Department": "Commercial", "Payment_Method": "Transfer", "City": "Berlin", "Status": "Completed"},
+        {"Date": "2026-03-05", "Transaction_ID": "GEN-1003", "Description": "Product sale", "Revenue": 16100, "Amount": 16100, "Expenses": 8950, "Profit": 7150, "Customers": 103, "Category": "Sales", "Department": "Commercial", "Payment_Method": "Card", "City": "Munich", "Status": "Completed"},
     ],
     "retail": [
-        {"Date": "2026-01-10", "Transaction_ID": "RTL-2001", "Description": "Store order", "Revenue": 4200, "Expenses": 2550, "Profit": 1650, "Customers": 32, "Category": "Electronics", "Department": "Store", "Payment_Method": "Card", "City": "Berlin", "Status": "Completed"},
-        {"Date": "2026-02-10", "Transaction_ID": "RTL-2002", "Description": "Online order", "Revenue": 5100, "Expenses": 2990, "Profit": 2110, "Customers": 39, "Category": "Home", "Department": "E-commerce", "Payment_Method": "PayPal", "City": "Hamburg", "Status": "Completed"},
-        {"Date": "2026-03-10", "Transaction_ID": "RTL-2003", "Description": "Store order", "Revenue": 5750, "Expenses": 3380, "Profit": 2370, "Customers": 44, "Category": "Electronics", "Department": "Store", "Payment_Method": "Card", "City": "Berlin", "Status": "Completed"},
+        {"Date": "2026-01-10", "Transaction_ID": "RTL-2001", "Description": "Store order", "Revenue": 4200, "Amount": 4200, "Expenses": 2550, "Profit": 1650, "Customers": 32, "Category": "Electronics", "Department": "Store", "Payment_Method": "Card", "City": "Berlin", "Status": "Completed"},
+        {"Date": "2026-02-10", "Transaction_ID": "RTL-2002", "Description": "Online order", "Revenue": 5100, "Amount": 5100, "Expenses": 2990, "Profit": 2110, "Customers": 39, "Category": "Home", "Department": "E-commerce", "Payment_Method": "PayPal", "City": "Hamburg", "Status": "Completed"},
+        {"Date": "2026-03-10", "Transaction_ID": "RTL-2003", "Description": "Store order", "Revenue": 5750, "Amount": 5750, "Expenses": 3380, "Profit": 2370, "Customers": 44, "Category": "Electronics", "Department": "Store", "Payment_Method": "Card", "City": "Berlin", "Status": "Completed"},
     ],
     "service": [
-        {"Date": "2026-01-15", "Transaction_ID": "SRV-3001", "Description": "Consulting engagement", "Revenue": 8600, "Expenses": 4100, "Profit": 4500, "Customers": 7, "Category": "Consulting", "Department": "Delivery", "Payment_Method": "Transfer", "City": "Frankfurt", "Status": "Completed"},
-        {"Date": "2026-02-15", "Transaction_ID": "SRV-3002", "Description": "Support retainer", "Revenue": 9200, "Expenses": 4350, "Profit": 4850, "Customers": 9, "Category": "Support", "Department": "Customer Success", "Payment_Method": "Transfer", "City": "Frankfurt", "Status": "Completed"},
-        {"Date": "2026-03-15", "Transaction_ID": "SRV-3003", "Description": "Implementation project", "Revenue": 11200, "Expenses": 5660, "Profit": 5540, "Customers": 6, "Category": "Implementation", "Department": "Delivery", "Payment_Method": "Card", "City": "Cologne", "Status": "Completed"},
+        {"Date": "2026-01-15", "Transaction_ID": "SRV-3001", "Description": "Consulting engagement", "Revenue": 8600, "Amount": 8600, "Expenses": 4100, "Profit": 4500, "Customers": 7, "Category": "Consulting", "Department": "Delivery", "Payment_Method": "Transfer", "City": "Frankfurt", "Status": "Completed"},
+        {"Date": "2026-02-15", "Transaction_ID": "SRV-3002", "Description": "Support retainer", "Revenue": 9200, "Amount": 9200, "Expenses": 4350, "Profit": 4850, "Customers": 9, "Category": "Support", "Department": "Customer Success", "Payment_Method": "Transfer", "City": "Frankfurt", "Status": "Completed"},
+        {"Date": "2026-03-15", "Transaction_ID": "SRV-3003", "Description": "Implementation project", "Revenue": 11200, "Amount": 11200, "Expenses": 5660, "Profit": 5540, "Customers": 6, "Category": "Implementation", "Department": "Delivery", "Payment_Method": "Card", "City": "Cologne", "Status": "Completed"},
     ],
 }
 
@@ -816,13 +889,16 @@ def healthz():
 @login_required
 def download_business_template(template_name: str, file_format: str):
     """Download a small, valid business template accepted by the upload flow."""
-    if template_name not in BUSINESS_TEMPLATE_ROWS or file_format not in {"csv", "xlsx"}:
+    if template_name not in BUSINESS_TEMPLATE_ROWS or file_format not in {"csv", "xlsx", "json"}:
         return jsonify({"error": "Template not found."}), 404
     frame = pd.DataFrame(BUSINESS_TEMPLATE_ROWS[template_name])
     safe_name = f"finsight_{template_name}_template.{file_format}"
     if file_format == "csv":
         output = io.BytesIO(frame.to_csv(index=False).encode("utf-8"))
         mimetype = "text/csv"
+    elif file_format == "json":
+        output = io.BytesIO(frame.to_json(orient="records", date_format="iso").encode("utf-8"))
+        mimetype = "application/json"
     else:
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
@@ -1255,10 +1331,11 @@ def upload_file():
             return jsonify({"error": str(exc) or "We could not read this file. Check its format and try again."}), 400
 
         mapping = _mapping_from_request()
-        if not mapping:
-            mapping = detect_columns(raw_df).get("mapping", {})
-        cleaned_df, cleaning = clean_dataframe(raw_df, mapping)
         detection = detect_columns(raw_df)
+        if not mapping:
+            mapping = detection.get("mapping", {})
+        mapping = _add_generic_prediction_mapping(raw_df, detection, mapping)
+        cleaned_df, cleaning = clean_dataframe(raw_df, mapping)
         mapped_labels = {field: mapping.get(field) for field in FIELD_SPECS if mapping.get(field)}
         missing_required = [
             FIELD_SPECS[field]["label"] for field in ("tx_date", "revenue")
@@ -2262,9 +2339,7 @@ def download_powerbi_excel(export_type: str):
             source = POWERBI_ROOT / resource["folder_token"] / "uploads" / upload["stored_name"]
             if not source.is_file():
                 return jsonify({"error": "The original uploaded file is unavailable."}), 404
-            raw = (pd.read_csv(source, dtype=object, keep_default_na=False)
-                   if source.suffix.lower() == ".csv"
-                   else pd.read_excel(source, dtype=object))
+            raw = _read_upload_dataframe(source, source.name)
             return _excel_download(raw, "finsight_raw_data.xlsx")
 
         if export_type == "cleaned":
@@ -2322,22 +2397,51 @@ def download_powerbi_excel(export_type: str):
 def _powerbi_export_frames(user_id: int, company_name: str,
                            dataset_id: int | None = None) -> dict[str, pd.DataFrame]:
     """Build Power BI tables from backend-enforced user-owned data only."""
-    cleaned_rows = run_query(
-        """
-         SELECT tx_date AS Date, transaction_id AS Transaction_ID, description AS Description,
-               amount AS Amount, revenue AS Revenue, expenses AS Expenses, profit AS Profit,
-               customers AS Customers, marketing_spend AS Marketing_Spend,
-               tx_type AS Transaction_Type, category AS Category,
-               payment_method AS Payment_Method, department AS Department, city AS City,
-             status AS Status, uploaded_file_id AS Upload_File_ID, user_id AS User_ID,
-             created_at AS Imported_At
-        FROM financial_data
-                WHERE user_id = %s
-                    AND (%s IS NULL OR uploaded_file_id = %s)
-        ORDER BY tx_date, id
-        """,
-        (user_id, dataset_id, dataset_id), fetchall=True,
-    )["rows"] or []
+    cleaned_columns = [
+        "Date", "Transaction_ID", "Description", "Amount", "Revenue", "Expenses",
+        "Profit", "Customers", "Marketing_Spend", "Transaction_Type", "Category", "Payment_Method", "Department",
+        "City", "Status", "Upload_File_ID", "User_ID", "Imported_At",
+    ]
+    prediction_columns = [
+        "Prediction_ID", "Prediction_Type", "Prediction_Date", "Actual_Value",
+        "Predicted_Value", "Prediction_Error", "Model", "Created_At",
+    ]
+
+    try:
+        stored_frame = _dataset_rows_frame(user_id, dataset_id)
+    except Exception as exc:
+        print(f"[finsight] Could not read preserved dataset rows for Power BI: {exc}")
+        stored_frame = pd.DataFrame()
+    if not stored_frame.empty:
+        cleaned = stored_frame.rename(columns={
+            "tx_date": "Date", "transaction_id": "Transaction_ID", "description": "Description",
+            "amount": "Amount", "revenue": "Revenue", "expenses": "Expenses", "profit": "Profit",
+            "customers": "Customers", "marketing_spend": "Marketing_Spend", "tx_type": "Transaction_Type",
+            "category": "Category", "payment_method": "Payment_Method", "department": "Department",
+            "city": "City", "status": "Status",
+        })
+        cleaned = cleaned.loc[:, ~cleaned.columns.duplicated(keep="first")]
+        extra_columns = [column for column in cleaned.columns if column not in cleaned_columns]
+        cleaned = cleaned.reindex(columns=[*cleaned_columns, *extra_columns])
+    else:
+        cleaned_rows = run_query(
+            """
+             SELECT tx_date AS Date, transaction_id AS Transaction_ID, description AS Description,
+                   amount AS Amount, revenue AS Revenue, expenses AS Expenses, profit AS Profit,
+                   customers AS Customers, marketing_spend AS Marketing_Spend,
+                   tx_type AS Transaction_Type, category AS Category,
+                   payment_method AS Payment_Method, department AS Department, city AS City,
+                 status AS Status, uploaded_file_id AS Upload_File_ID, user_id AS User_ID,
+                 created_at AS Imported_At
+            FROM financial_data
+                    WHERE user_id = %s
+                        AND (%s IS NULL OR uploaded_file_id = %s)
+            ORDER BY tx_date, id
+            """,
+            (user_id, dataset_id, dataset_id), fetchall=True,
+        )["rows"] or []
+        cleaned = pd.DataFrame(cleaned_rows).reindex(columns=cleaned_columns)
+
     prediction_rows = run_query(
         """
          SELECT prediction_id AS Prediction_ID, prediction_type AS Prediction_Type,
@@ -2351,17 +2455,6 @@ def _powerbi_export_frames(user_id: int, company_name: str,
         """,
         (user_id, dataset_id, dataset_id), fetchall=True,
     )["rows"] or []
-
-    cleaned_columns = [
-        "Date", "Transaction_ID", "Description", "Amount", "Revenue", "Expenses",
-        "Profit", "Customers", "Marketing_Spend", "Transaction_Type", "Category", "Payment_Method", "Department",
-        "City", "Status", "Upload_File_ID", "User_ID", "Imported_At",
-    ]
-    prediction_columns = [
-        "Prediction_ID", "Prediction_Type", "Prediction_Date", "Actual_Value",
-        "Predicted_Value", "Prediction_Error", "Model", "Created_At",
-    ]
-    cleaned = pd.DataFrame(cleaned_rows).reindex(columns=cleaned_columns)
     predictions = pd.DataFrame(prediction_rows).reindex(columns=prediction_columns)
     metric_columns = ["Amount", "Revenue", "Expenses", "Profit", "Customers", "Marketing_Spend"]
     for column in metric_columns:

@@ -723,11 +723,14 @@ class MLPipeline:
                 return None, {'error': f"Model not trained for {model_type}"}
             
             features = metadata.get('features', [])
+            missing = []
             
             if history_df is not None and prediction_date is not None:
                 X, error = self._forecast_features(history_df, model_type, prediction_date, features)
                 if error:
                     return None, {'error': error}
+                missing = [feature for feature in features
+                           if feature not in X.columns or X[feature].isna().any()]
             else:
                 input_df = pd.DataFrame([new_data or {}]).reindex(columns=features)
                 if not any(feature in (new_data or {}) for feature in features):
