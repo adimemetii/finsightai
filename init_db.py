@@ -219,7 +219,7 @@ TABLES: list[str] = [
         user_id           INT NOT NULL,
         company_id        INT NOT NULL,
         uploaded_file_id  INT NOT NULL,
-        row_number        INT NOT NULL,
+        `row_number`      INT NOT NULL,
         row_data          LONGTEXT NOT NULL,
         created_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT fk_dataset_rows_user FOREIGN KEY (user_id)
@@ -228,7 +228,7 @@ TABLES: list[str] = [
             REFERENCES companies(id) ON DELETE CASCADE,
         CONSTRAINT fk_dataset_rows_file FOREIGN KEY (uploaded_file_id)
             REFERENCES uploaded_files(id) ON DELETE CASCADE,
-        UNIQUE KEY uq_dataset_row (uploaded_file_id, row_number),
+        UNIQUE KEY uq_dataset_row (uploaded_file_id, `row_number`),
         INDEX idx_dataset_rows_user_file (user_id, uploaded_file_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,

@@ -302,44 +302,75 @@ def run_query(sql: str, params: tuple | list | None = None, *, fetchone=False, f
         conn.close()
 
 
-# Existing Aiven databases may have been created before the current schema
-# called the display-name field ``name``. Read the actual column instead of
-# altering that table during signup or login. Identifiers are restricted to
-# this allow-list before they are interpolated into SQL.
-_USER_DISPLAY_COLUMNS = ("name", "full_name", "username", "user_name", "display_name")
+# Existing Aiven databases may use firstName/lastName/password instead of
+# the newer name/password_hash/company_id names in this repository. Read the
+# live users-table column names and only interpolate values from this fixed
+# alias map; no production schema is altered.
+_USER_COLUMN_ALIASES = {
+    "display": ("name", "full_name", "username", "user_name", "display_name"),
+    "first_name": ("firstName", "first_name", "firstname"),
+    "last_name": ("lastName", "last_name", "lastname"),
+    "email": ("email", "email_address"),
+    "password": ("password_hash", "password", "passwd", "hashed_password"),
+    "company_id": ("company_id", "companyId"),
+    "role": ("role", "user_role"),
+    "created_at": ("created_at", "createdAt"),
+}
 
 
-def _find_user_display_column(cursor) -> str | None:
-    placeholders = ", ".join(["%s"] * len(_USER_DISPLAY_COLUMNS))
+def _quote_identifier(value: str) -> str:
+    return "`" + value.replace("`", "``") + "`"
+
+
+def _find_user_columns(cursor) -> dict[str, str]:
     cursor.execute(
-        f"""
+        """
         SELECT column_name
         FROM information_schema.columns
-        WHERE table_schema = DATABASE()
-          AND table_name = 'users'
-          AND column_name IN ({placeholders})
-        ORDER BY FIELD(column_name, {placeholders})
-        LIMIT 1
-        """,
-        _USER_DISPLAY_COLUMNS + _USER_DISPLAY_COLUMNS,
+        WHERE table_schema = DATABASE() AND table_name = 'users'
+        """
     )
-    row = cursor.fetchone()
-    if not row:
-        return None
-    value = row.get("column_name") if isinstance(row, dict) else row[0]
-    return value if value in _USER_DISPLAY_COLUMNS else None
+    rows = cursor.fetchall()
+    available = {}
+    for row in rows:
+        value = row.get("column_name") if isinstance(row, dict) else row[0]
+        if value:
+            available[str(value).lower()] = str(value)
+
+    result = {}
+    for logical_name, aliases in _USER_COLUMN_ALIASES.items():
+        for alias in aliases:
+            actual = available.get(alias.lower())
+            if actual:
+                result[logical_name] = actual
+                break
+    return result
 
 
-def _user_display_select() -> str:
-    """Return a safe SELECT expression aliased as ``name`` for app code."""
+def _load_user_columns() -> dict[str, str]:
     conn = get_db()
+    cursor = conn.cursor(dictionary=True)
     try:
-        cursor = conn.cursor(dictionary=True)
-        column = _find_user_display_column(cursor)
-        cursor.close()
+        return _find_user_columns(cursor)
     finally:
+        cursor.close()
         conn.close()
-    return f"u.`{column}` AS name" if column else "NULL AS name"
+
+
+def _user_display_expression(columns: dict[str, str], qualifier: str = "u") -> str:
+    display = columns.get("display")
+    if display:
+        return f"{qualifier}.{_quote_identifier(display)} AS name"
+    first = columns.get("first_name")
+    last = columns.get("last_name")
+    if first and last:
+        return (
+            f"TRIM(CONCAT_WS(' ', {qualifier}.{_quote_identifier(first)}, "
+            f"{qualifier}.{_quote_identifier(last)})) AS name"
+        )
+    if first or last:
+        return f"{qualifier}.{_quote_identifier(first or last)} AS name"
+    return "NULL AS name"
 
 
 # =====================================================
@@ -418,7 +449,7 @@ def _load_active_cleaned_dataset(user_id: int, dataset_id: int) -> pd.DataFrame:
         try:
             generic_rows = run_query(
                 """SELECT row_data FROM dataset_rows
-                   WHERE user_id=%s AND uploaded_file_id=%s ORDER BY row_number""",
+                WHERE user_id=%s AND uploaded_file_id=%s ORDER BY `row_number`""",
                 (user_id, dataset_id), fetchall=True,
             )["rows"] or []
             records = [json.loads(row["row_data"]) for row in generic_rows]
@@ -812,9 +843,17 @@ def signup():
             flash("Password must be at least 6 characters long.", "danger")
             return render_template("signup.html")
 
-        # Check whether the email is already used
+        user_columns = _load_user_columns()
+        email_column = user_columns.get("email")
+        password_column = user_columns.get("password")
+        if not email_column or not password_column:
+            flash("The users table is missing its email or password field.", "danger")
+            return render_template("signup.html")
+
+        # Check whether the email is already used.
         existing = run_query(
-            "SELECT id FROM users WHERE email = %s", (email,), fetchone=True
+            f"SELECT id FROM users WHERE {_quote_identifier(email_column)} = %s",
+            (email,), fetchone=True,
         )
         if existing and existing["row"]:
             flash("This email is already registered. Please log in.", "warning")
@@ -835,24 +874,41 @@ def signup():
                 )
                 company_id = cur.lastrowid
 
-            # Create the user
-            display_column = _find_user_display_column(cur)
+            # Create the user using only columns present in the existing table.
+            insert_columns = []
+            insert_values = []
+            display_column = user_columns.get("display")
             if display_column:
-                cur.execute(
-                    f"""
-                    INSERT INTO users (`{display_column}`, email, password_hash, company_id)
-                    VALUES (%s, %s, %s, %s)
-                    """,
-                    (name, email, generate_password_hash(password), company_id),
-                )
+                insert_columns.append(display_column)
+                insert_values.append(name)
             else:
-                cur.execute(
-                    """
-                    INSERT INTO users (email, password_hash, company_id)
-                    VALUES (%s, %s, %s)
-                    """,
-                    (email, generate_password_hash(password), company_id),
-                )
+                name_parts = name.split(maxsplit=1)
+                first_column = user_columns.get("first_name")
+                last_column = user_columns.get("last_name")
+                if first_column:
+                    insert_columns.append(first_column)
+                    insert_values.append(name_parts[0])
+                if last_column:
+                    insert_columns.append(last_column)
+                    insert_values.append(name_parts[1] if len(name_parts) > 1 else "")
+
+            insert_columns.extend((email_column, password_column))
+            insert_values.extend((email, generate_password_hash(password)))
+            company_column = user_columns.get("company_id")
+            if company_column:
+                insert_columns.append(company_column)
+                insert_values.append(company_id)
+            role_column = user_columns.get("role")
+            if role_column:
+                insert_columns.append(role_column)
+                insert_values.append("user")
+
+            column_sql = ", ".join(_quote_identifier(column) for column in insert_columns)
+            value_sql = ", ".join(["%s"] * len(insert_values))
+            cur.execute(
+                f"INSERT INTO users ({column_sql}) VALUES ({value_sql})",
+                tuple(insert_values),
+            )
             user_id = cur.lastrowid
             conn.commit()
             cur.close()
@@ -894,12 +950,28 @@ def login():
             flash("Enter a valid email address.", "danger")
             return render_template("login.html")
 
+        user_columns = _load_user_columns()
+        email_column = user_columns.get("email")
+        password_column = user_columns.get("password")
+        if not email_column or not password_column:
+            flash("The users table is missing its email or password field.", "danger")
+            return render_template("login.html")
+
+        company_column = user_columns.get("company_id")
+        if company_column:
+            company_sql = f"u.{_quote_identifier(company_column)} AS company_id, c.company_name"
+            company_join = "JOIN companies c ON c.id = u." + _quote_identifier(company_column)
+        else:
+            company_sql = "NULL AS company_id, '' AS company_name"
+            company_join = ""
         row = run_query(
             f"""
-            SELECT u.id, {_user_display_select()}, u.password_hash, u.company_id, c.company_name
+            SELECT u.id, {_user_display_expression(user_columns)},
+                   u.{_quote_identifier(password_column)} AS password_hash,
+                   {company_sql}
             FROM users u
-            JOIN companies c ON c.id = u.company_id
-            WHERE u.email = %s
+            {company_join}
+            WHERE u.{_quote_identifier(email_column)} = %s
             """,
             (email,),
             fetchone=True,
@@ -909,11 +981,12 @@ def login():
             flash("Invalid email or password.", "danger")
             return render_template("login.html")
 
+        display_name = row.get("name") or email
         session["user_id"] = row["id"]
-        session["user_name"] = row["name"]
+        session["user_name"] = display_name
         session["company_id"] = row["company_id"]
-        session["company_name"] = row["company_name"]
-        flash(f"Welcome back, {row['name']}!", "success")
+        session["company_name"] = row["company_name"] or ""
+        flash(f"Welcome back, {display_name}!", "success")
         return redirect(url_for("dashboard"))
 
     return render_template("login.html")
@@ -1245,7 +1318,7 @@ def upload_file():
                 cur.executemany(financial_sql, financial_rows[start:start + 500])
                 cur.executemany(
                     """INSERT INTO dataset_rows
-                       (user_id, company_id, uploaded_file_id, row_number, row_data)
+                       (user_id, company_id, uploaded_file_id, `row_number`, row_data)
                        VALUES (%s, %s, %s, %s, %s)""",
                     dataset_rows[start:start + 500],
                 )
@@ -1946,9 +2019,29 @@ def database():
 @login_required
 def settings():
     """Show the signed-in account and active application settings."""
+    user_columns = _load_user_columns()
+    company_column = user_columns.get("company_id")
+    email_column = user_columns.get("email")
+    created_column = user_columns.get("created_at")
+    if company_column:
+        company_sql = f"u.{_quote_identifier(company_column)} AS company_id, c.company_name"
+        company_join = "JOIN companies c ON c.id = u." + _quote_identifier(company_column)
+    else:
+        company_sql = "NULL AS company_id, '' AS company_name"
+        company_join = ""
+    email_sql = (
+        f"u.{_quote_identifier(email_column)} AS email"
+        if email_column else "'' AS email"
+    )
+    created_sql = (
+        f"u.{_quote_identifier(created_column)} AS created_at"
+        if created_column else "NULL AS created_at"
+    )
     account = run_query(
-        f"""SELECT {_user_display_select()}, u.email, u.created_at, c.company_name
-           FROM users u JOIN companies c ON c.id = u.company_id
+        f"""SELECT {_user_display_expression(user_columns)},
+                  {email_sql}, {created_sql},
+                  {company_sql}
+           FROM users u {company_join}
            WHERE u.id=%s""",
         (_session_user_id(),), fetchone=True,
     )["row"] or {
