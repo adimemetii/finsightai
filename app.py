@@ -330,6 +330,7 @@ def _find_user_columns(cursor) -> dict[str, str]:
     schemas.
     """
     cursor.execute("SELECT * FROM users LIMIT 0")
+    cursor.fetchall()
     available = {}
     for metadata in cursor.description or ():
         value = metadata[0] if metadata else None
@@ -365,8 +366,8 @@ def _user_display_expression(columns: dict[str, str], qualifier: str = "u") -> s
     last = columns.get("last_name")
     if first and last:
         return (
-            f"TRIM(CONCAT_WS(' ', {qualifier}.{_quote_identifier(first)}, "
-            f"{qualifier}.{_quote_identifier(last)})) AS name"
+            f"CONCAT({qualifier}.{_quote_identifier(first)}, ' ', "
+            f"{qualifier}.{_quote_identifier(last)}) AS name"
         )
     if first or last:
         return f"{qualifier}.{_quote_identifier(first or last)} AS name"
