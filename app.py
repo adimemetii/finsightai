@@ -317,6 +317,17 @@ _USER_COLUMN_ALIASES = {
     "created_at": ("created_at", "createdAt"),
 }
 
+# This is the schema contract declared in init_db.py. Metadata discovery is
+# retained for older deployments, but authentication must still work when the
+# MySQL account cannot read information_schema rows for its own users table.
+_REPOSITORY_USER_COLUMNS = {
+    "display": "name",
+    "email": "email",
+    "password": "password_hash",
+    "company_id": "company_id",
+    "created_at": "created_at",
+}
+
 
 def _quote_identifier(value: str) -> str:
     return "`" + value.replace("`", "``") + "`"
@@ -351,7 +362,12 @@ def _load_user_columns() -> dict[str, str]:
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     try:
-        return _find_user_columns(cursor)
+        discovered = _find_user_columns(cursor)
+        if {"email", "password"}.issubset(discovered):
+            return discovered
+        # init_db.py is the source of truth for the current schema. Do not
+        # make a failed metadata lookup look like a missing users field.
+        return dict(_REPOSITORY_USER_COLUMNS)
     finally:
         cursor.close()
         conn.close()
