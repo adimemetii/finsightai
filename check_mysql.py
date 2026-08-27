@@ -72,13 +72,20 @@ def _try(host: str, port: int, user: str, password: str, database: str, ssl_ca: 
 
 
 def main() -> int:
-    required = ("DB_HOST", "DB_USER", "DB_NAME")
+    required = ("DB_HOST", "DB_PORT", "DB_USER", "DB_NAME")
     missing = [name for name in required if not _db_env(name)]
     if missing:
         print("Missing required database environment variable(s): " + ", ".join(missing))
         return 1
     host = _db_env("DB_HOST")
-    port = int(_db_env("DB_PORT", "3306"))
+    try:
+        port = int(_db_env("DB_PORT"))
+    except ValueError:
+        print("DB_PORT must be a number.")
+        return 1
+    if not 1 <= port <= 65535:
+        print("DB_PORT must be between 1 and 65535.")
+        return 1
     user = _db_env("DB_USER")
     password = _db_env("DB_PASSWORD")
     database = _db_env("DB_NAME")

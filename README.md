@@ -122,11 +122,12 @@ FLASK_DEBUG=True
 FLASK_APP=app.py
 SECRET_KEY=change-me
 
-MYSQL_HOST=localhost
-MYSQL_PORT=3306
-MYSQL_USER=root
-MYSQL_PASSWORD=
-MYSQL_DATABASE=finsightai
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=root
+DB_PASSWORD=
+DB_NAME=finsightai
+DB_SSL_CA=
 
 MAX_CONTENT_LENGTH=16777216
 UPLOAD_FOLDER=uploads
@@ -136,8 +137,8 @@ ALLOWED_EXTENSIONS=csv,xlsx,xls,json
 POWERBI_TEMPLATE=finsightai.pbix
 ```
 
-The application reads `MYSQL_*` (preferred) **or** the legacy
-`DB_*` aliases, so you can use whichever you prefer.
+The application uses the `DB_*` names above. Existing local installations
+using the legacy `MYSQL_*` names remain supported as a compatibility fallback.
 
 ---
 

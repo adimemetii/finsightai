@@ -169,13 +169,19 @@ def _ssl_ca_path(value: str) -> str:
 
 def _db_config() -> dict[str, object]:
     """Build verified TLS configuration, materializing PEM CA values when needed."""
-    required = ("DB_HOST", "DB_USER", "DB_NAME")
+    required = ("DB_HOST", "DB_PORT", "DB_USER", "DB_NAME")
     missing = [name for name in required if not _db_env(name)]
     if missing:
         raise RuntimeError("Missing required database environment variable(s): " + ", ".join(missing))
+    try:
+        port = int(_db_env("DB_PORT"))
+    except ValueError as exc:
+        raise RuntimeError("DB_PORT must be a number") from exc
+    if not 1 <= port <= 65535:
+        raise RuntimeError("DB_PORT must be between 1 and 65535")
     config = {
         "host": _db_env("DB_HOST"),
-        "port": int(_db_env("DB_PORT", "3306")),
+        "port": port,
         "user": _db_env("DB_USER"),
         "password": _db_env("DB_PASSWORD"),
         "database": _db_env("DB_NAME"),
@@ -261,8 +267,14 @@ def get_db():
                 pool = _build_pool()
                 if pool is not None:
                     return pool.get_connection()
-            except Exception:
-                pass
+            except Exception as rebuild_exc:
+                # Keep the original connector failure visible in the log; a
+                # silent fallback makes a bad deployment configuration hard to
+                # distinguish from a stale pooled connection.
+                print(
+                    "[finsight] Pool rebuild failed "
+                    f"({type(rebuild_exc).__name__}: {rebuild_exc})."
+                )
             # Last resort - direct connect with the current environment configuration.
             return mysql.connector.connect(**_db_config())
     return mysql.connector.connect(**_db_config())
@@ -2611,6 +2623,27 @@ def not_found(_):
 @app.errorhandler(413)
 def too_large(_):
     return jsonify({"error": "Uploaded file is too large. Maximum size is 16MB."}), 413
+
+
+@app.errorhandler(mysql.connector.Error)
+def database_unavailable(error):
+    """Return a useful response when MySQL is unavailable or misconfigured."""
+    app.logger.error(
+        "Database request failed: %s: %s",
+        type(error).__name__,
+        error,
+        exc_info=(type(error), error, error.__traceback__),
+    )
+    message = "Database connection failed. Please try again later."
+    if request.path.startswith("/api/") or request.is_json:
+        return jsonify({"error": message}), 503
+    if request.path == "/signup":
+        flash(message, "danger")
+        return render_template("signup.html"), 503
+    if request.path == "/login":
+        flash(message, "danger")
+        return render_template("login.html"), 503
+    return render_template("500.html"), 503
 
 
 @app.errorhandler(500)

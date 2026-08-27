@@ -58,13 +58,19 @@ def _db_env(name: str, default: str = "") -> str:
 
 
 def _db_config() -> dict[str, object]:
-    required = ("DB_HOST", "DB_USER", "DB_NAME")
+    required = ("DB_HOST", "DB_PORT", "DB_USER", "DB_NAME")
     missing = [name for name in required if not _db_env(name)]
     if missing:
         raise RuntimeError("Missing required database environment variable(s): " + ", ".join(missing))
+    try:
+        port = int(_db_env("DB_PORT"))
+    except ValueError as exc:
+        raise RuntimeError("DB_PORT must be a number") from exc
+    if not 1 <= port <= 65535:
+        raise RuntimeError("DB_PORT must be between 1 and 65535")
     config = {
         "host": _db_env("DB_HOST"),
-        "port": int(_db_env("DB_PORT", "3306")),
+        "port": port,
         "user": _db_env("DB_USER"),
         "password": _db_env("DB_PASSWORD"),
         "ssl_verify_cert": True,

@@ -5,7 +5,7 @@ services:
     buildCommand: pip install -r requirements.txt
     # The current session cache is process-local; one worker keeps the demo
     # flow consistent while datasets remain durable in the database.
-    startCommand: python init_db.py && gunicorn --workers 1 --threads 4 --timeout 120 app:app
+    startCommand: python init_db.py && gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120 app:app
     healthCheckPath: /healthz
     envVars:
       - key: SECRET_KEY
@@ -13,13 +13,13 @@ services:
       - key: DB_HOST
         sync: false
       - key: DB_PORT
-        value: "3306"
+        sync: false
       - key: DB_USER
         sync: false
       - key: DB_PASSWORD
         sync: false
       - key: DB_NAME
-        value: finsightai
+        sync: false
       - key: DB_SSL_CA
         sync: false
       - key: MAX_CONTENT_LENGTH
