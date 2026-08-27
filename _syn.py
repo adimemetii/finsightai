@@ -1,7 +1,7 @@
 import os
 from jinja2 import Environment, TemplateSyntaxError
 env = Environment(autoescape=True)
-templates = ["base.html","index.html","login.html","signup.html","dashboard.html","upload.html","predict.html","history.html","analytics.html","powerbi.html","404.html","500.html"]
+templates = ["base.html","index.html","login.html","signup.html","dashboard.html","upload.html","predict.html","history.html","analytics.html","powerbi.html","settings.html","404.html","500.html"]
 for t in templates:
     p = os.path.join("templates", t)
     try:

@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import os
 import sys
+import hashlib
+import tempfile
 from pathlib import Path
 
 try:
@@ -37,26 +39,59 @@ def _env(name: str, default: str = "") -> str:
     return os.environ.get(name, default).strip()
 
 
+_DB_ENV_ALIASES = {
+    "DB_HOST": ("DB_HOST", "MYSQL_HOST"),
+    "DB_PORT": ("DB_PORT", "MYSQL_PORT"),
+    "DB_USER": ("DB_USER", "MYSQL_USER"),
+    "DB_PASSWORD": ("DB_PASSWORD", "MYSQL_PASSWORD"),
+    "DB_NAME": ("DB_NAME", "MYSQL_DATABASE"),
+    "DB_SSL_CA": ("DB_SSL_CA", "MYSQL_SSL_CA"),
+}
+
+
+def _db_env(name: str, default: str = "") -> str:
+    for candidate in _DB_ENV_ALIASES.get(name, (name,)):
+        value = _env(candidate)
+        if value:
+            return value
+    return default
+
+
 def _db_config() -> dict[str, object]:
-    required = ("DB_HOST", "DB_PORT", "DB_USER", "DB_PASSWORD", "DB_NAME")
-    missing = [name for name in required if not _env(name)]
+    required = ("DB_HOST", "DB_USER", "DB_NAME")
+    missing = [name for name in required if not _db_env(name)]
     if missing:
         raise RuntimeError("Missing required database environment variable(s): " + ", ".join(missing))
     config = {
-        "host": _env("DB_HOST"),
-        "port": int(_env("DB_PORT")),
-        "user": _env("DB_USER"),
-        "password": _env("DB_PASSWORD"),
+        "host": _db_env("DB_HOST"),
+        "port": int(_db_env("DB_PORT", "3306")),
+        "user": _db_env("DB_USER"),
+        "password": _db_env("DB_PASSWORD"),
         "ssl_verify_cert": True,
         "ssl_verify_identity": True,
     }
-    ssl_ca = _env("DB_SSL_CA")
+    ssl_ca = _db_env("DB_SSL_CA")
     if ssl_ca:
-        config["ssl_ca"] = ssl_ca
+        config["ssl_ca"] = _ssl_ca_path(ssl_ca)
     return config
 
 
-DB_NAME = _env("DB_NAME")
+DB_NAME = _db_env("DB_NAME")
+_SSL_CA_TEMP_PATH: Path | None = None
+
+
+def _ssl_ca_path(value: str) -> str:
+    """Accept either a CA file path or a PEM value from a deployment secret."""
+    global _SSL_CA_TEMP_PATH
+    value = (value or "").strip()
+    if not value or "BEGIN CERTIFICATE" not in value:
+        return value
+    if _SSL_CA_TEMP_PATH is None or not _SSL_CA_TEMP_PATH.is_file():
+        digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
+        _SSL_CA_TEMP_PATH = Path(tempfile.gettempdir()) / f"finsightai-db-ca-{digest}.pem"
+        if not _SSL_CA_TEMP_PATH.exists():
+            _SSL_CA_TEMP_PATH.write_text(value + "\n", encoding="utf-8")
+    return str(_SSL_CA_TEMP_PATH)
 
 
 # ---------------------------------------------------------------
@@ -119,6 +154,11 @@ TABLES: list[str] = [
         version         INT          NOT NULL DEFAULT 1,
         original_name   VARCHAR(255) NOT NULL,
         stored_name     VARCHAR(255) NOT NULL,
+        source_format   VARCHAR(12)  NULL,
+        source_columns  LONGTEXT     NULL,
+        column_mapping  LONGTEXT     NULL,
+        cleaning_summary LONGTEXT    NULL,
+        upload_warnings LONGTEXT     NULL,
         file_size       BIGINT       NOT NULL DEFAULT 0,
         rows_imported   INT          NOT NULL DEFAULT 0,
         status          VARCHAR(40)  NOT NULL DEFAULT 'uploaded',
@@ -146,6 +186,8 @@ TABLES: list[str] = [
         revenue           DECIMAL(18, 2)  NULL,
         expenses          DECIMAL(18, 2)  NULL,
         profit            DECIMAL(18, 2)  NULL,
+        customers         DECIMAL(18, 2)  NULL,
+        marketing_spend   DECIMAL(18, 2)  NULL,
         tx_type           VARCHAR(80)     NULL,
         category          VARCHAR(120)    NULL,
         payment_method    VARCHAR(80)     NULL,
@@ -161,6 +203,27 @@ TABLES: list[str] = [
             REFERENCES uploaded_files(id) ON DELETE CASCADE,
         INDEX idx_fin_company_date (company_id, tx_date),
         INDEX idx_fin_file (uploaded_file_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+
+    # ---------------- dataset_rows (preserve arbitrary business columns) ----------------
+    """
+    CREATE TABLE IF NOT EXISTS dataset_rows (
+        row_id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+        user_id           INT NOT NULL,
+        company_id        INT NOT NULL,
+        uploaded_file_id  INT NOT NULL,
+        row_number        INT NOT NULL,
+        row_data          LONGTEXT NOT NULL,
+        created_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT fk_dataset_rows_user FOREIGN KEY (user_id)
+            REFERENCES users(id) ON DELETE CASCADE,
+        CONSTRAINT fk_dataset_rows_company FOREIGN KEY (company_id)
+            REFERENCES companies(id) ON DELETE CASCADE,
+        CONSTRAINT fk_dataset_rows_file FOREIGN KEY (uploaded_file_id)
+            REFERENCES uploaded_files(id) ON DELETE CASCADE,
+        UNIQUE KEY uq_dataset_row (uploaded_file_id, row_number),
+        INDEX idx_dataset_rows_user_file (user_id, uploaded_file_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
 
@@ -299,6 +362,8 @@ VIEWS: list[str] = [
         COALESCE(SUM(fd.revenue),  0)                  AS total_revenue,
         COALESCE(SUM(fd.expenses), 0)                  AS total_expenses,
         COALESCE(SUM(fd.profit),   0)                  AS total_profit,
+        COALESCE(SUM(fd.customers), 0)                AS total_customers,
+        COALESCE(SUM(fd.marketing_spend), 0)          AS total_marketing_spend,
         COUNT(fd.id)                                    AS total_rows
     FROM companies c
     LEFT JOIN financial_data fd ON fd.company_id = c.id
@@ -315,7 +380,9 @@ VIEWS: list[str] = [
         COALESCE(SUM(fd.revenue),  0) AS revenue,
         COALESCE(SUM(fd.expenses), 0) AS expenses,
         COALESCE(SUM(fd.profit),   0) AS profit,
-        COALESCE(SUM(fd.amount),   0) AS amount
+        COALESCE(SUM(fd.amount),   0) AS amount,
+        COALESCE(SUM(fd.customers), 0) AS customers,
+        COALESCE(SUM(fd.marketing_spend), 0) AS marketing_spend
     FROM financial_data fd
     JOIN companies c ON c.id = fd.company_id
     GROUP BY fd.company_id, c.company_name, fd.tx_date
@@ -331,7 +398,9 @@ VIEWS: list[str] = [
         COALESCE(SUM(fd.amount),  0)                     AS amount,
         COALESCE(SUM(fd.revenue), 0)                     AS revenue,
         COALESCE(SUM(fd.expenses),0)                     AS expenses,
-        COALESCE(SUM(fd.profit),  0)                     AS profit
+        COALESCE(SUM(fd.profit),  0)                     AS profit,
+        COALESCE(SUM(fd.customers), 0)                   AS customers,
+        COALESCE(SUM(fd.marketing_spend), 0)             AS marketing_spend
     FROM financial_data fd
     JOIN companies c ON c.id = fd.company_id
     GROUP BY fd.company_id, c.company_name, fd.category
@@ -404,6 +473,20 @@ def create_tables() -> None:
             cursor.execute(ddl)
         add_column_if_missing(cursor, "uploaded_files", "version",
                               "INT NOT NULL DEFAULT 1 AFTER company_id")
+        add_column_if_missing(cursor, "uploaded_files", "source_format",
+                              "VARCHAR(12) NULL AFTER stored_name")
+        add_column_if_missing(cursor, "uploaded_files", "source_columns",
+                              "LONGTEXT NULL AFTER source_format")
+        add_column_if_missing(cursor, "uploaded_files", "column_mapping",
+                              "LONGTEXT NULL AFTER source_columns")
+        add_column_if_missing(cursor, "uploaded_files", "cleaning_summary",
+                              "LONGTEXT NULL AFTER column_mapping")
+        add_column_if_missing(cursor, "uploaded_files", "upload_warnings",
+                              "LONGTEXT NULL AFTER cleaning_summary")
+        add_column_if_missing(cursor, "financial_data", "customers",
+                              "DECIMAL(18, 2) NULL AFTER profit")
+        add_column_if_missing(cursor, "financial_data", "marketing_spend",
+                              "DECIMAL(18, 2) NULL AFTER customers")
         add_column_if_missing(cursor, "predictions", "actual_value",
                               "DECIMAL(18, 2) NULL AFTER prediction_date")
         add_column_if_missing(cursor, "predictions", "prediction_error",

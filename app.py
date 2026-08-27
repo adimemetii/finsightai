@@ -12,6 +12,7 @@ Database init: python init_db.py
 from __future__ import annotations
 
 import io
+import json
 import os
 import re
 import secrets
@@ -48,18 +49,30 @@ from flask import (
     session, flash, send_file,
 )
 from sklearn.linear_model import LinearRegression
-from sklearn.tree import DecisionTreeClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error, r2_score
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 
+from data_mapping import (
+    CANONICAL_NUMERIC_FIELDS,
+    CANONICAL_TEXT_FIELDS,
+    FIELD_SPECS,
+    apply_mapping,
+    clean_dataframe,
+    detect_columns,
+    json_safe_record,
+    profile_dataframe,
+    profile_json_payload,
+)
+
 # ML Pipeline - improved ML with proper validation and no leakage
 try:
-    from ml_pipeline import get_pipeline
+    from ml_pipeline import get_pipeline, RuleBasedRiskModel
 except ImportError as e:
     print(f"[finsight] Warning: Could not import ml_pipeline: {e}")
     get_pipeline = None
+    RuleBasedRiskModel = None
 
 # Universal analysis - dataset-agnostic cleaning / target detection / models
 try:
@@ -83,6 +96,25 @@ BASE_DIR = Path(__file__).resolve().parent
 
 def _env(name: str, default: str = "") -> str:
     return os.environ.get(name, default).strip()
+
+
+_DB_ENV_ALIASES = {
+    "DB_HOST": ("DB_HOST", "MYSQL_HOST"),
+    "DB_PORT": ("DB_PORT", "MYSQL_PORT"),
+    "DB_USER": ("DB_USER", "MYSQL_USER"),
+    "DB_PASSWORD": ("DB_PASSWORD", "MYSQL_PASSWORD"),
+    "DB_NAME": ("DB_NAME", "MYSQL_DATABASE"),
+    "DB_SSL_CA": ("DB_SSL_CA", "MYSQL_SSL_CA"),
+}
+
+
+def _db_env(name: str, default: str = "") -> str:
+    """Read the documented DB_* names and legacy MYSQL_* aliases."""
+    for candidate in _DB_ENV_ALIASES.get(name, (name,)):
+        value = _env(candidate)
+        if value:
+            return value
+    return default
 
 
 def _int_env(name: str, default: int) -> int:
@@ -137,20 +169,20 @@ def _ssl_ca_path(value: str) -> str:
 
 def _db_config() -> dict[str, object]:
     """Build verified TLS configuration, materializing PEM CA values when needed."""
-    required = ("DB_HOST", "DB_PORT", "DB_USER", "DB_PASSWORD", "DB_NAME")
-    missing = [name for name in required if not _env(name)]
+    required = ("DB_HOST", "DB_USER", "DB_NAME")
+    missing = [name for name in required if not _db_env(name)]
     if missing:
         raise RuntimeError("Missing required database environment variable(s): " + ", ".join(missing))
     config = {
-        "host": _env("DB_HOST"),
-        "port": _int_env("DB_PORT", 25614),
-        "user": _env("DB_USER"),
-        "password": _env("DB_PASSWORD"),
-        "database": _env("DB_NAME"),
+        "host": _db_env("DB_HOST"),
+        "port": int(_db_env("DB_PORT", "3306")),
+        "user": _db_env("DB_USER"),
+        "password": _db_env("DB_PASSWORD"),
+        "database": _db_env("DB_NAME"),
         "ssl_verify_cert": True,
         "ssl_verify_identity": True,
     }
-    ssl_ca = _env("DB_SSL_CA")
+    ssl_ca = _db_env("DB_SSL_CA")
     if ssl_ca:
         config["ssl_ca"] = _ssl_ca_path(ssl_ca)
     return config
@@ -164,22 +196,24 @@ POWERBI_ROOT.mkdir(exist_ok=True)
 POWERBI_TEMPLATE = BASE_DIR / _env("POWERBI_TEMPLATE", "finsightai.pbix")
 MAX_CONTENT_LENGTH = _int_env("MAX_CONTENT_LENGTH", 16 * 1024 * 1024)
 ALLOWED_EXTENSIONS = {
-    e.lower() for e in _env("ALLOWED_EXTENSIONS", "csv,xlsx,xls").split(",") if e
-} | {"csv", "xlsx", "xls"}
+    e.lower() for e in _env("ALLOWED_EXTENSIONS", "csv,xlsx,xls,json").split(",") if e
+} | {"csv", "xlsx", "xls", "json"}
+MAX_DATA_COLUMNS = _int_env("MAX_DATA_COLUMNS", 200)
 
 
 
 
 app = Flask(__name__)
+_production_mode = _env("FLASK_ENV", "production").lower() == "production"
 app.config.update(
     SECRET_KEY=SECRET_KEY,
     MAX_CONTENT_LENGTH=MAX_CONTENT_LENGTH,
     UPLOAD_FOLDER=str(UPLOAD_FOLDER),
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
-    SESSION_COOKIE_SECURE=_bool_env("SESSION_COOKIE_SECURE", False),
+    SESSION_COOKIE_SECURE=_bool_env("SESSION_COOKIE_SECURE", _production_mode),
 )
-if _env("FLASK_ENV", "production").lower() == "production" and not _env("SECRET_KEY"):
+if _production_mode and not _env("SECRET_KEY"):
     app.logger.warning("SECRET_KEY is not configured; sessions will be invalidated when the server restarts.")
 if i18n is not None:
     i18n.init_app(app)
@@ -190,7 +224,6 @@ if i18n is not None:
 # any updates to .env credentials are always picked up).
 # =====================================================
 db_pool = None
-_pool_lock_lock = False  # tiny guard so we only build the pool once
 
 
 def _build_pool():
@@ -297,10 +330,6 @@ def _localized_insight(text: str) -> str:
     return " ".join(parts)
 
 
-def get_dataset(user_id: int) -> pd.DataFrame | None:
-    return session_data.get(user_id, {}).get("df")
-
-
 def get_models(user_id: int) -> dict:
     return session_data.setdefault(user_id, {}).setdefault("models", {
         "amount": None, "expenses": None, "revenue": None, "profit": None, "risk": None
@@ -322,7 +351,7 @@ def _load_active_cleaned_dataset(user_id: int, dataset_id: int) -> pd.DataFrame:
     """Rebuild the active upload's cleaned frame and its models from owned rows."""
     rows = run_query(
         """SELECT tx_date, transaction_id, description, amount, revenue, expenses, profit,
-                  tx_type, category, payment_method, department, city, status
+                  customers, marketing_spend, tx_type, category, payment_method, department, city, status
            FROM financial_data
            WHERE user_id=%s AND uploaded_file_id=%s
            ORDER BY tx_date, id""",
@@ -330,15 +359,32 @@ def _load_active_cleaned_dataset(user_id: int, dataset_id: int) -> pd.DataFrame:
     )["rows"] or []
     df = pd.DataFrame(rows)
     if df.empty:
-        # No legacy financial rows were persisted (generic dataset). Try the
-        # universal-analysis sidecar so predictions still work after a restart.
+        # Generic datasets are durable in dataset_rows, while the normalized
+        # financial table remains the compatibility layer for legacy exports.
         try:
-            path = _analysis_store_path(user_id)
-            if path is not None and path.exists():
-                side = pd.read_csv(path)
-                _run_universal_analysis(user_id, side)
+            generic_rows = run_query(
+                """SELECT row_data FROM dataset_rows
+                   WHERE user_id=%s AND uploaded_file_id=%s ORDER BY row_number""",
+                (user_id, dataset_id), fetchall=True,
+            )["rows"] or []
+            records = [json.loads(row["row_data"]) for row in generic_rows]
+            if records:
+                restored = pd.DataFrame(records)
+                _run_universal_analysis(user_id, restored)
+                df = restored
         except Exception as exc:
-            print(f"[finsight] Could not restore universal analysis: {exc}")
+            print(f"[finsight] Could not restore generic dataset: {exc}")
+        # Keep the older sidecar as a backward-compatible fallback for uploads
+        # created before dataset_rows was introduced.
+        if df.empty:
+            try:
+                path = _analysis_store_path(user_id)
+                if path is not None and path.exists():
+                    side = pd.read_csv(path)
+                    _run_universal_analysis(user_id, side)
+                    df = side
+            except Exception as exc:
+                print(f"[finsight] Could not restore universal analysis: {exc}")
         # Generic uploads have no canonical financial rows.  Record ownership
         # anyway so navigation does not repeatedly discard their restored
         # universal analysis and incorrectly show the upload-required state.
@@ -491,7 +537,7 @@ def protect_csrf():
     expected = session.get("_csrf_token")
     if expected and supplied and secrets.compare_digest(expected, supplied):
         return None
-    if request.is_json or request.path in {"/upload", "/risk-classify", "/powerbi/generate"}:
+    if request.is_json or request.path in {"/upload", "/upload/preview", "/risk-classify", "/powerbi/generate"}:
         return jsonify({"error": "Your session validation token is missing or expired. Refresh the page and try again."}), 400
     flash("Your form has expired. Please refresh the page and try again.", "warning")
     return redirect(request.referrer or url_for("index"))
@@ -512,8 +558,15 @@ def init_database() -> None:
         cur = conn.cursor()
         for table, column, definition in (
             ("uploaded_files", "version", "INT NOT NULL DEFAULT 1 AFTER company_id"),
+            ("uploaded_files", "source_format", "VARCHAR(12) NULL AFTER stored_name"),
+            ("uploaded_files", "source_columns", "LONGTEXT NULL AFTER source_format"),
+            ("uploaded_files", "column_mapping", "LONGTEXT NULL AFTER source_columns"),
+            ("uploaded_files", "cleaning_summary", "LONGTEXT NULL AFTER column_mapping"),
+            ("uploaded_files", "upload_warnings", "LONGTEXT NULL AFTER cleaning_summary"),
             ("predictions", "actual_value", "DECIMAL(18, 2) NULL AFTER prediction_date"),
             ("predictions", "prediction_error", "DECIMAL(18, 2) NULL AFTER predicted_value"),
+            ("financial_data", "customers", "DECIMAL(18, 2) NULL AFTER profit"),
+            ("financial_data", "marketing_spend", "DECIMAL(18, 2) NULL AFTER customers"),
         ):
             cur.execute(
                 """SELECT COUNT(*) FROM information_schema.columns
@@ -547,6 +600,25 @@ def init_database() -> None:
                 INDEX idx_risk_user_file_date (user_id, uploaded_file_id, classification_date)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"""
         )
+        cur.execute(
+            """CREATE TABLE IF NOT EXISTS dataset_rows (
+                row_id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+                user_id           INT NOT NULL,
+                company_id        INT NOT NULL,
+                uploaded_file_id  INT NOT NULL,
+                row_number        INT NOT NULL,
+                row_data          LONGTEXT NOT NULL,
+                created_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_dataset_rows_user FOREIGN KEY (user_id)
+                    REFERENCES users(id) ON DELETE CASCADE,
+                CONSTRAINT fk_dataset_rows_company FOREIGN KEY (company_id)
+                    REFERENCES companies(id) ON DELETE CASCADE,
+                CONSTRAINT fk_dataset_rows_file FOREIGN KEY (uploaded_file_id)
+                    REFERENCES uploaded_files(id) ON DELETE CASCADE,
+                UNIQUE KEY uq_dataset_row (uploaded_file_id, row_number),
+                INDEX idx_dataset_rows_user_file (user_id, uploaded_file_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"""
+        )
         conn.commit()
         cur.close()
         conn.close()
@@ -559,38 +631,79 @@ def init_database() -> None:
 # =====================================================
 # Column normalisation for uploaded files
 # =====================================================
-COLUMN_ALIASES = {
-    "date":          "tx_date",
-    "transaction_id":"transaction_id",
-    "tx_id":         "transaction_id",
-    "id":            "transaction_id",
-    "description":   "description",
-    "desc":          "description",
-    "amount":        "amount",
-    "revenue":       "revenue",
-    "expenses":      "expenses",
-    "expense":       "expenses",
-    "profit":        "profit",
-    "type":          "tx_type",
-    "tx_type":       "tx_type",
-    "category":      "category",
-    "payment_method":"payment_method",
-    "payment":       "payment_method",
-    "department":    "department",
-    "city":          "city",
-    "status":        "status",
-}
-
-
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Rename incoming columns to a canonical set used by the rest of the app.
-    Case-insensitive, with common aliases (e.g. expense -> expenses)."""
-    rename = {}
-    for col in df.columns:
-        key = col.strip().lower().replace(" ", "_")
-        if key in COLUMN_ALIASES:
-            rename[col] = COLUMN_ALIASES[key]
-    return df.rename(columns=rename)
+    """Backward-compatible wrapper around the conservative business mapper."""
+    return apply_mapping(df, detect_columns(df).get("mapping", {}))
+
+
+def _read_upload_dataframe(source: str | Path | io.BytesIO, filename: str) -> pd.DataFrame:
+    """Read one supported upload format into a bounded dataframe."""
+    extension = Path(filename).suffix.lower()
+    if extension == ".csv":
+        try:
+            frame = pd.read_csv(source)
+            if len(frame.columns) == 1:
+                # A semicolon-delimited export is common in European tools.
+                if hasattr(source, "seek"):
+                    source.seek(0)
+                frame = pd.read_csv(source, sep=None, engine="python")
+        except UnicodeDecodeError:
+            if hasattr(source, "seek"):
+                source.seek(0)
+            frame = pd.read_csv(source, encoding="latin-1", sep=None, engine="python")
+    elif extension in {".xlsx", ".xls"}:
+        frame = pd.read_excel(source)
+    elif extension == ".json":
+        if hasattr(source, "seek"):
+            source.seek(0)
+        if isinstance(source, (str, Path)):
+            with open(source, "r", encoding="utf-8") as json_file:
+                payload = json.load(json_file)
+        else:
+            payload = json.load(source)
+        frame = profile_json_payload(payload)
+    else:
+        raise ValueError("File must be CSV, XLSX, XLS, or JSON.")
+
+    if frame.empty or len(frame.columns) == 0:
+        raise ValueError("File is empty or has no tabular data.")
+    if len(frame.columns) > MAX_DATA_COLUMNS:
+        raise ValueError(f"The file contains too many columns. Maximum allowed is {MAX_DATA_COLUMNS}.")
+    if len(frame) > 1_000_000:
+        raise ValueError("The file contains too many rows. Maximum allowed is 1,000,000.")
+    return frame
+
+
+def _mapping_from_request() -> dict[str, str]:
+    raw = request.form.get("mapping")
+    if not raw:
+        return {}
+    try:
+        payload = json.loads(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("The column mapping is invalid.") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("The column mapping is invalid.")
+    return {str(key): str(value).strip() for key, value in payload.items() if value}
+
+
+BUSINESS_TEMPLATE_ROWS = {
+    "general": [
+        {"Date": "2026-01-05", "Transaction_ID": "GEN-1001", "Description": "Product sale", "Revenue": 12500, "Expenses": 7300, "Profit": 5200, "Customers": 84, "Category": "Sales", "Department": "Commercial", "Payment_Method": "Card", "City": "Berlin", "Status": "Completed"},
+        {"Date": "2026-02-05", "Transaction_ID": "GEN-1002", "Description": "Subscription renewal", "Revenue": 14800, "Expenses": 8100, "Profit": 6700, "Customers": 96, "Category": "Subscriptions", "Department": "Commercial", "Payment_Method": "Transfer", "City": "Berlin", "Status": "Completed"},
+        {"Date": "2026-03-05", "Transaction_ID": "GEN-1003", "Description": "Product sale", "Revenue": 16100, "Expenses": 8950, "Profit": 7150, "Customers": 103, "Category": "Sales", "Department": "Commercial", "Payment_Method": "Card", "City": "Munich", "Status": "Completed"},
+    ],
+    "retail": [
+        {"Date": "2026-01-10", "Transaction_ID": "RTL-2001", "Description": "Store order", "Revenue": 4200, "Expenses": 2550, "Profit": 1650, "Customers": 32, "Category": "Electronics", "Department": "Store", "Payment_Method": "Card", "City": "Berlin", "Status": "Completed"},
+        {"Date": "2026-02-10", "Transaction_ID": "RTL-2002", "Description": "Online order", "Revenue": 5100, "Expenses": 2990, "Profit": 2110, "Customers": 39, "Category": "Home", "Department": "E-commerce", "Payment_Method": "PayPal", "City": "Hamburg", "Status": "Completed"},
+        {"Date": "2026-03-10", "Transaction_ID": "RTL-2003", "Description": "Store order", "Revenue": 5750, "Expenses": 3380, "Profit": 2370, "Customers": 44, "Category": "Electronics", "Department": "Store", "Payment_Method": "Card", "City": "Berlin", "Status": "Completed"},
+    ],
+    "service": [
+        {"Date": "2026-01-15", "Transaction_ID": "SRV-3001", "Description": "Consulting engagement", "Revenue": 8600, "Expenses": 4100, "Profit": 4500, "Customers": 7, "Category": "Consulting", "Department": "Delivery", "Payment_Method": "Transfer", "City": "Frankfurt", "Status": "Completed"},
+        {"Date": "2026-02-15", "Transaction_ID": "SRV-3002", "Description": "Support retainer", "Revenue": 9200, "Expenses": 4350, "Profit": 4850, "Customers": 9, "Category": "Support", "Department": "Customer Success", "Payment_Method": "Transfer", "City": "Frankfurt", "Status": "Completed"},
+        {"Date": "2026-03-15", "Transaction_ID": "SRV-3003", "Description": "Implementation project", "Revenue": 11200, "Expenses": 5660, "Profit": 5540, "Customers": 6, "Category": "Implementation", "Department": "Delivery", "Payment_Method": "Card", "City": "Cologne", "Status": "Completed"},
+    ],
+}
 
 
 # =====================================================
@@ -654,6 +767,32 @@ def index():
     if _session_user_id():
         return redirect(url_for("dashboard"))
     return render_template("index.html")
+
+
+@app.get("/healthz")
+def healthz():
+    """Lightweight deployment health check that does not require a DB round trip."""
+    return jsonify({"status": "ok", "service": "finsight-ai"})
+
+
+@app.get("/templates/<template_name>/<file_format>")
+@login_required
+def download_business_template(template_name: str, file_format: str):
+    """Download a small, valid business template accepted by the upload flow."""
+    if template_name not in BUSINESS_TEMPLATE_ROWS or file_format not in {"csv", "xlsx"}:
+        return jsonify({"error": "Template not found."}), 404
+    frame = pd.DataFrame(BUSINESS_TEMPLATE_ROWS[template_name])
+    safe_name = f"finsight_{template_name}_template.{file_format}"
+    if file_format == "csv":
+        output = io.BytesIO(frame.to_csv(index=False).encode("utf-8"))
+        mimetype = "text/csv"
+    else:
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+            frame.to_excel(writer, index=False, sheet_name="Business_Data")
+        output.seek(0)
+        mimetype = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    return send_file(output, as_attachment=True, download_name=safe_name, mimetype=mimetype)
 
 
 @app.route("/signup", methods=["GET", "POST"])
@@ -818,7 +957,7 @@ def dashboard():
         (user_id,),
         fetchall=True,
     )["rows"] or []
-    active_dataset_id = _current_dataset_id(user_id)
+    active_dataset_id, df = _active_dataset_and_frame(user_id)
     risk_status = None
     if active_dataset_id is not None:
         risk_status = run_query(
@@ -829,7 +968,6 @@ def dashboard():
 
     # Aggregates for KPI cards (use live data if loaded, otherwise fall
     # back to whatever is stored in financial_data)
-    df = get_dataset(user_id)
     if df is not None and not df.empty:
         stats = {
             "rows": int(len(df)),
@@ -864,6 +1002,7 @@ def dashboard():
             "date_range": "",
         }
 
+    analysis_context = _analysis_context(user_id) or {}
     return render_template(
         "dashboard.html",
         company_name=session["company_name"],
@@ -872,146 +1011,146 @@ def dashboard():
         predictions=predictions,
         stats=stats,
         risk_status=risk_status,
-        analysis=_analysis_context(user_id),
-        insight=(_analysis_context(user_id) or {}).get("insight", ""),
-        analysis_trends=(_analysis_context(user_id) or {}).get("trends", []),
+        analysis=analysis_context,
+        insight=analysis_context.get("insight", ""),
+        analysis_trends=analysis_context.get("trends", []),
     )
 
 
 @app.route("/analytics")
 @login_required
 def analytics():
-    """Render interactive charts from the authenticated user's active dataset."""
+    """Render only charts supported by the active dataset."""
     user_id = _session_user_id()
     _, df = _active_dataset_and_frame(user_id)
+    empty_context = {
+        "company_name": session["company_name"], "has_data": False, "monthly": [],
+        "categories": [], "cities": [], "totals": {}, "trend_keys": [],
+        "trend_labels": [], "category_label": "Category", "has_trend": False,
+        "has_categories": False, "has_totals": False, "has_cities": False,
+    }
     if df is None or df.empty:
-        return render_template(
-            "analytics.html", company_name=session["company_name"], has_data=False,
-            monthly=[], categories=[], cities=[], totals={}, generic_analytics=False,
-            trend_keys=[], trend_labels=[], category_label="Category",
-        )
+        return render_template("analytics.html", **empty_context)
 
     working = df.copy()
-    for column in ("amount", "revenue", "expenses", "profit"):
-        if column not in working.columns:
-            working[column] = 0
-        working[column] = pd.to_numeric(working[column], errors="coerce").fillna(0)
+    analysis = _analysis_context(user_id) or {}
+    types = analysis.get("types") or {}
+    canonical_order = ["revenue", "expenses", "profit", "amount", "customers", "marketing_spend"]
+    typed_numeric = [name for name, kind in types.items() if kind == "numeric"]
+    numeric_columns = []
+    for column in canonical_order + typed_numeric:
+        if column in working.columns and column not in numeric_columns:
+            values = pd.to_numeric(working[column], errors="coerce")
+            if values.notna().any() and column not in {"Date_Number", "Month", "Day_of_Week"}:
+                working[column] = values
+                numeric_columns.append(column)
 
-    # Generic (universal) analytics: when the upload is a non-financial business
-    # dataset, still build a useful monthly trend + category breakdown.
-    has_financial = (
-        "tx_date" in working.columns
-        and bool(working[["revenue", "expenses", "profit"]].abs().sum().sum())
-    )
-    if not has_financial:
-        try:
-            analysis = _analysis_context(user_id) or {}
-            types = analysis.get("types") or {}
-            date_col = next((c for c, t in types.items() if t == "date"), None) or "tx_date"
-            num_cols = [c for c, t in types.items() if t == "numeric"]
-            cat_cols = [c for c, t in types.items() if t == "categorical"]
-            if date_col not in working.columns:
-                date_col = None
-            if num_cols:
-                num_cols = [c for c in num_cols if c in working.columns]
-            if date_col:
-                parsed = pd.to_datetime(working[date_col], errors="coerce")
-                temp = working.copy()
-                temp["_period"] = parsed.dt.to_period("M").astype(str)
-                temp = temp.dropna(subset=["_period"])
-                if not temp.empty:
-                    keys = num_cols[:3]
-                    monthly = temp.groupby("_period", as_index=False)[keys].sum()
-                    monthly = monthly.rename(columns={"_period": "period"})
-                    monthly = monthly.to_dict("records")
-                else:
-                    monthly = []
-            else:
-                monthly = []
-            cats = []
-            if cat_cols and num_cols:
-                cat = cat_cols[0]
-                value_col = num_cols[0]
-                if cat in working.columns and value_col in working.columns:
-                    agg = working.fillna({cat: "Unknown"}).groupby(
-                        cat, as_index=False)[value_col].sum()
-                    if cat != "category":
-                        agg = agg.rename(columns={cat: "category"})
-                    cats = agg.rename(columns={value_col: "amount"}) \
-                        .sort_values("amount", ascending=False).head(12).to_dict("records")
-            totals = {c: float(working[c].sum()) for c in num_cols[:4]}
-            return render_template(
-                "analytics.html",
-                company_name=session["company_name"],
-                has_data=True,
-                monthly=monthly,
-                categories=cats,
-                cities=[],
-                totals=totals,
-                trend_keys=num_cols[:3],
-                trend_labels=[
-                    str(c).replace("_", " ").title() for c in num_cols[:3]
-                ],
-                category_label=cat_cols[0].replace("_", " ").title()
-                if cat_cols else "Category",
-                generic_analytics=True,
-            )
-        except Exception as exc:
-            # Generic analytics is an optional enhancement.  Fall back to the
-            # established financial view if a heterogeneous upload cannot be
-            # summarized here.
-            print(f"[finsight] Generic analytics warning: {exc}")
+    date_col = None
+    for candidate in ["tx_date", *[name for name, kind in types.items() if kind == "date"]]:
+        if candidate in working.columns and pd.to_datetime(working[candidate], errors="coerce").notna().any():
+            date_col = candidate
+            break
 
-    monthly = working.dropna(subset=["tx_date"]).assign(
-        period=lambda frame: pd.to_datetime(frame["tx_date"]).dt.to_period("M").astype(str)
-    ).groupby("period", as_index=False)[["revenue", "expenses", "profit"]].sum()
-    categories = []
-    if "category" in working.columns:
-        categories = working.assign(category=working["category"].fillna("Uncategorized").astype(str)) \
-            .groupby("category", as_index=False)["amount"].sum().sort_values("amount", ascending=False).head(12).to_dict("records")
-    cities = []
-    if "city" in working.columns:
-        cities = working.assign(city=working["city"].fillna("").astype(str))
-        cities = cities[cities["city"].str.strip() != ""].groupby("city", as_index=False)["amount"].sum() \
-            .sort_values("amount", ascending=False).head(20).to_dict("records")
+    trend_keys = numeric_columns[:4]
+    monthly: list[dict] = []
+    if date_col and trend_keys:
+        dated = working.copy()
+        dated["_period"] = pd.to_datetime(dated[date_col], errors="coerce").dt.to_period("M").astype("string")
+        dated = dated.dropna(subset=["_period"])
+        if not dated.empty:
+            monthly_frame = dated.groupby("_period", as_index=False)[trend_keys].sum(min_count=1)
+            monthly = monthly_frame.rename(columns={"_period": "period"}).to_dict("records")
 
+    category_col = next((name for name in ("category", "department", "city", "payment_method", "status", *typed_numeric)
+                         if name in working.columns and types.get(name, "categorical") in {"categorical", "text"}
+                         and working[name].notna().any()), None)
+    value_col = next((name for name in ["revenue", "expenses", "profit", "amount", *numeric_columns]
+                      if name in working.columns and name in numeric_columns), None)
+    categories: list[dict] = []
+    if category_col and value_col:
+        grouped = working[[category_col, value_col]].copy()
+        grouped[category_col] = grouped[category_col].fillna("Unspecified").astype(str)
+        grouped = grouped.groupby(category_col, as_index=False)[value_col].sum(min_count=1)
+        categories = grouped.rename(columns={category_col: "category", value_col: "amount"}) \
+            .sort_values("amount", ascending=False).head(12).to_dict("records")
+
+    cities: list[dict] = []
+    if "city" in working.columns and value_col and working["city"].notna().any():
+        city_frame = working[["city", value_col]].copy()
+        city_frame["city"] = city_frame["city"].astype(str).str.strip()
+        city_frame = city_frame[city_frame["city"] != ""]
+        cities = city_frame.groupby("city", as_index=False)[value_col].sum(min_count=1) \
+            .rename(columns={value_col: "amount"}).sort_values("amount", ascending=False).head(20).to_dict("records")
+
+    totals = {column: float(pd.to_numeric(working[column], errors="coerce").sum())
+              for column in numeric_columns}
+    generic_analytics = not any(column in numeric_columns for column in ("revenue", "expenses", "profit", "amount"))
     return render_template(
         "analytics.html", company_name=session["company_name"], has_data=True,
-        monthly=monthly.to_dict("records"), categories=categories, cities=cities,
-        totals={column: float(working[column].sum()) for column in ("revenue", "expenses", "profit", "amount")},
-        generic_analytics=False,
-        trend_keys=["revenue", "expenses", "profit"],
-        trend_labels=["Revenue", "Expenses", "Profit"],
-        category_label="Category",
+        monthly=monthly, categories=categories, cities=cities, totals=totals,
+        generic_analytics=generic_analytics, trend_keys=trend_keys,
+        trend_labels=[str(column).replace("_", " ").title() for column in trend_keys],
+        category_label=category_col.replace("_", " ").title() if category_col else "Category",
+        has_trend=bool(monthly and trend_keys), has_categories=bool(categories),
+        has_totals=bool(totals), has_cities=bool(cities),
     )
 
 
 # =====================================================
 # Routes - File upload
 # =====================================================
+@app.post("/upload/preview")
+@login_required
+def upload_preview():
+    """Inspect an upload without persisting it or changing the active dataset."""
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided."}), 400
+    file = request.files["file"]
+    filename = (file.filename or "").strip()
+    if not filename:
+        return jsonify({"error": "No file selected."}), 400
+    if not allowed_file(filename):
+        return jsonify({"error": "File must be CSV, XLSX, XLS, or JSON."}), 400
+    contents = file.stream.read()
+    if not contents:
+        return jsonify({"error": "File is empty."}), 400
+    if len(contents) > MAX_CONTENT_LENGTH:
+        return jsonify({"error": "Uploaded file is too large. Maximum size is 16MB."}), 413
+    try:
+        frame = _read_upload_dataframe(io.BytesIO(contents), filename)
+        profile = profile_dataframe(frame)
+        return jsonify({"success": True, "profile": profile})
+    except (ValueError, pd.errors.ParserError, OSError) as exc:
+        return jsonify({"error": str(exc) or "We could not read this file."}), 400
+    except Exception:
+        app.logger.exception("Upload preview failed")
+        return jsonify({"error": "We could not read this file. Check its format and try again."}), 400
+
+
 @app.route("/upload", methods=["GET", "POST"])
 @login_required
 def upload_file():
-    """Accept a CSV/XLSX file, clean it, store rows in MySQL, train models."""
+    """Accept CSV, XLSX, XLS, or JSON, map business fields, and persist the result."""
     user_id = _session_user_id()
     company_id = _session_company_id()
 
     if request.method == "GET":
-        return render_template("upload.html", company_name=session["company_name"])
+        return render_template(
+            "upload.html", company_name=session["company_name"], field_specs=FIELD_SPECS,
+        )
 
     if "file" not in request.files:
-        return jsonify({"error": "No file provided"}), 400
-
+        return jsonify({"error": "No file provided."}), 400
     file = request.files["file"]
-    if not file.filename:
-        return jsonify({"error": "No file selected"}), 400
-    if not allowed_file(file.filename):
-        return jsonify({"error": "File must be CSV, XLSX, or XLS"}), 400
+    original_name = (file.filename or "").strip()
+    if not original_name:
+        return jsonify({"error": "No file selected."}), 400
+    if not allowed_file(original_name):
+        return jsonify({"error": "File must be CSV, XLSX, XLS, or JSON."}), 400
+    safe_name = secure_filename(original_name)
+    if not safe_name:
+        return jsonify({"error": "The file name is not valid."}), 400
 
-    # Persist the file on disk so we have a record of every upload
-    safe_name = secure_filename(file.filename)
-    # The stored path is derived solely from the authenticated user and an
-    # opaque resource token; no client-supplied user/company identifier is used.
     resource = _powerbi_resource(user_id)
     user_upload_dir = POWERBI_ROOT / resource["folder_token"] / "uploads"
     user_upload_dir.mkdir(parents=True, exist_ok=True)
@@ -1019,252 +1158,182 @@ def upload_file():
     disk_path = user_upload_dir / stored_name
     try:
         file.save(disk_path)
-    except Exception as exc:
+    except Exception:
         app.logger.exception("Could not save uploaded file")
         return jsonify({"error": "Could not save the file. Please try again."}), 500
 
     file_id: int | None = None
     upload_succeeded = False
     try:
-        # ---------- Read with Pandas ----------
         try:
-            if safe_name.lower().endswith(".csv"):
-                df = pd.read_csv(disk_path)
-            else:
-                df = pd.read_excel(disk_path)
+            raw_df = _read_upload_dataframe(disk_path, safe_name)
         except Exception as exc:
             add_history(user_id, company_id, "upload", safe_name, status="failed",
                         details=f"read error: {exc}")
-            app.logger.info("Invalid upload from user %s: %s", user_id, exc)
-            return jsonify({"error": "We could not read this file. Check its format and try again."}), 400
+            return jsonify({"error": str(exc) or "We could not read this file. Check its format and try again."}), 400
 
-        if df.empty:
-            return jsonify({"error": "File is empty or has no data"}), 400
+        mapping = _mapping_from_request()
+        if not mapping:
+            mapping = detect_columns(raw_df).get("mapping", {})
+        cleaned_df, cleaning = clean_dataframe(raw_df, mapping)
+        detection = detect_columns(raw_df)
+        mapped_labels = {field: mapping.get(field) for field in FIELD_SPECS if mapping.get(field)}
+        missing_required = [
+            FIELD_SPECS[field]["label"] for field in ("tx_date", "revenue")
+            if field not in mapping
+        ]
+        warnings = list(detection.get("warnings", []))
+        if missing_required:
+            warnings.append("Missing important fields: " + ", ".join(missing_required) + ".")
 
-        # ---------- Register the upload ----------
         file_id = run_query(
-            """
-            INSERT INTO uploaded_files
-                (user_id, company_id, version, original_name, stored_name, file_size, rows_imported, status)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, 'processing')
-            """,
+            """INSERT INTO uploaded_files
+               (user_id, company_id, version, original_name, stored_name, file_size,
+                rows_imported, status, source_format, source_columns, column_mapping,
+                cleaning_summary, upload_warnings)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, 'processing', %s, %s, %s, %s, %s)""",
             (user_id, company_id, _next_dataset_version(user_id), safe_name, stored_name,
-             disk_path.stat().st_size, int(len(df))),
+             disk_path.stat().st_size, int(len(raw_df)), Path(safe_name).suffix.lower().lstrip("."),
+             json.dumps([str(column) for column in raw_df.columns], ensure_ascii=False),
+             json.dumps(mapped_labels, ensure_ascii=False), json.dumps(cleaning),
+             json.dumps(warnings, ensure_ascii=False)),
             commit=True,
         )["last_id"]
 
-        # ---------- Normalize columns ----------
-        df = normalize_columns(df)
-
-        # Drop fully empty rows / duplicates
-        df.dropna(how="all", inplace=True)
-        df.drop_duplicates(inplace=True)
-
-        # Keep a copy of the cleaned upload (original column names) for the
-        # universal, dataset-agnostic analysis pipeline.
-        universal_df = df.copy()
-
-        # ---------- Date ----------
-        if "tx_date" in df.columns:
-            df["tx_date"] = pd.to_datetime(df["tx_date"], errors="coerce")
-            df["tx_date"] = df["tx_date"].dt.date  # store as python date
-        else:
-            df["tx_date"] = None
-
-        # ---------- Numeric columns ----------
-        had_money_cols = any(
-            c in df.columns for c in ("amount", "revenue", "expenses", "profit")
-        )
-        for col in ("amount", "revenue", "expenses", "profit"):
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors="coerce")
+        for column in CANONICAL_NUMERIC_FIELDS:
+            if column not in cleaned_df.columns:
+                cleaned_df[column] = np.nan
+        for column in CANONICAL_TEXT_FIELDS:
+            if column not in cleaned_df.columns:
+                cleaned_df[column] = None
             else:
-                df[col] = np.nan
+                cleaned_df[column] = cleaned_df[column].astype(object).where(cleaned_df[column].notna(), None)
+        if "tx_date" not in cleaned_df.columns:
+            cleaned_df["tx_date"] = pd.NaT
 
-        # Compute profit when both columns exist and profit missing
-        if df["profit"].isna().all() and "revenue" in df.columns and "expenses" in df.columns:
-            df["profit"] = df["revenue"].fillna(0) - df["expenses"].fillna(0)
-
-        # Drop rows with no money value, but ONLY when the uploaded file actually
-        # contained one of the financial columns (a generic business dataset must
-        # never be wiped out because it has no Revenue/Expenses/Profit).
-        money_cols = [c for c in ("amount", "revenue", "expenses", "profit") if c in df.columns]
-        if money_cols and had_money_cols:
-            df = df.dropna(subset=money_cols, how="all")
-
-        if df.empty:
-            run_query(
-                "UPDATE uploaded_files SET status='failed' WHERE id=%s AND user_id=%s",
-                (file_id, user_id), commit=True,
-            )
-            add_history(user_id, company_id, "upload", safe_name, file_id=file_id,
-                        status="failed", details="no usable rows after cleaning")
-            return jsonify({"error": "No valid rows after cleaning. "
-                                     "Check that your file contains numeric or "
-                                     "categorical business data."}), 400
-
-        # Optional string columns - never required
-        for col in ("transaction_id", "description", "tx_type", "category",
-                    "payment_method", "department", "city", "status"):
-            if col not in df.columns:
-                df[col] = None
-            else:
-                df[col] = df[col].astype(object).where(df[col].notna(), None)
-
-        # ---------- Persist to MySQL ----------
-        insert_sql = """
-            INSERT INTO financial_data
-                (user_id, company_id, uploaded_file_id,
-                 tx_date, transaction_id, description,
-                 amount, revenue, expenses, profit,
-                 tx_type, category, payment_method, department, city, status)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """
-        rows = []
-        for _, r in df.iterrows():
-            rows.append((
+        financial_sql = """INSERT INTO financial_data
+            (user_id, company_id, uploaded_file_id, tx_date, transaction_id, description,
+             amount, revenue, expenses, profit, customers, marketing_spend,
+             tx_type, category, payment_method, department, city, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+        financial_rows = []
+        dataset_rows = []
+        for row_number, (_, row) in enumerate(cleaned_df.iterrows(), start=1):
+            tx_value = row.get("tx_date")
+            tx_value = pd.to_datetime(tx_value, errors="coerce") if tx_value is not None else pd.NaT
+            financial_rows.append((
                 user_id, company_id, file_id,
-                r["tx_date"] if isinstance(r["tx_date"], date) else None,
-                r.get("transaction_id"),
-                r.get("description"),
-                None if pd.isna(r["amount"])  else float(r["amount"]),
-                None if pd.isna(r["revenue"]) else float(r["revenue"]),
-                None if pd.isna(r["expenses"]) else float(r["expenses"]),
-                None if pd.isna(r["profit"])  else float(r["profit"]),
-                r.get("tx_type"),
-                r.get("category"),
-                r.get("payment_method"),
-                r.get("department"),
-                r.get("city"),
-                r.get("status"),
+                None if pd.isna(tx_value) else tx_value.date(),
+                row.get("transaction_id"), row.get("description"),
+                *[None if pd.isna(row.get(column)) else float(row.get(column))
+                  for column in ("amount", "revenue", "expenses", "profit", "customers", "marketing_spend")],
+                row.get("tx_type"), row.get("category"), row.get("payment_method"),
+                row.get("department"), row.get("city"), row.get("status"),
+            ))
+            dataset_rows.append((
+                user_id, company_id, file_id, row_number,
+                json.dumps(json_safe_record(row.to_dict()), ensure_ascii=False, allow_nan=False),
             ))
 
-        # Insert in chunks to avoid huge packets
         conn = get_db()
         try:
             cur = conn.cursor()
-            CHUNK = 500
-            for i in range(0, len(rows), CHUNK):
-                cur.executemany(insert_sql, rows[i:i + CHUNK])
+            for start in range(0, len(financial_rows), 500):
+                cur.executemany(financial_sql, financial_rows[start:start + 500])
+                cur.executemany(
+                    """INSERT INTO dataset_rows
+                       (user_id, company_id, uploaded_file_id, row_number, row_data)
+                       VALUES (%s, %s, %s, %s, %s)""",
+                    dataset_rows[start:start + 500],
+                )
             conn.commit()
             cur.close()
+        except Exception:
+            conn.rollback()
+            raise
         finally:
             conn.close()
 
         run_query(
-            "UPDATE uploaded_files SET rows_imported=%s, status='processed' WHERE id=%s AND user_id=%s",
-            (int(len(df)), file_id, user_id), commit=True,
+            """UPDATE uploaded_files SET rows_imported=%s, status='processed',
+               source_columns=%s, column_mapping=%s, cleaning_summary=%s, upload_warnings=%s
+               WHERE id=%s AND user_id=%s""",
+            (int(len(cleaned_df)), json.dumps([str(column) for column in raw_df.columns], ensure_ascii=False),
+             json.dumps(mapped_labels, ensure_ascii=False), json.dumps(cleaning),
+             json.dumps(warnings, ensure_ascii=False), file_id, user_id), commit=True,
         )
 
-        # ---------- Train models for this user/company ----------
-        # Convert tx_date back to datetime so the model code can use it
-        train_df = df.copy()
+        train_df = cleaned_df.copy()
         train_df["tx_date"] = pd.to_datetime(train_df["tx_date"], errors="coerce")
         train_df = train_df.dropna(subset=["tx_date"])
-        # A new upload always replaces the active dataset/model for this user.
-        # Never leave a model trained from an earlier upload in this session.
         session_data[user_id] = {
             "df": train_df,
             "dataset_id": file_id,
             "models": {"amount": None, "expenses": None, "revenue": None, "profit": None, "risk": None},
         }
         if not train_df.empty:
-            train_df["Date_Number"] = (
-                train_df["tx_date"] - train_df["tx_date"].min()
-            ).dt.days
+            train_df["Date_Number"] = (train_df["tx_date"] - train_df["tx_date"].min()).dt.days
             train_df["Month"] = train_df["tx_date"].dt.month
             train_df["Day_of_Week"] = train_df["tx_date"].dt.dayofweek
-            session_data.setdefault(user_id, {})["df"] = train_df
+            session_data[user_id]["df"] = train_df
             try:
                 _train_models_for(user_id, train_df)
             except Exception as exc:
-                print(f"[finsight] Model training warning: {exc}")
+                app.logger.warning("Model training skipped: %s", exc)
 
-        # Universal, dataset-agnostic analysis (any CSV/XLSX works).
-        try:
-            _run_universal_analysis(user_id, universal_df)
-        except Exception as exc:
-            print(f"[finsight] Universal analysis warning: {exc}")
-
+        _run_universal_analysis(user_id, cleaned_df)
         add_history(user_id, company_id, "upload", safe_name, file_id=file_id,
-                    status="processed", details=f"{len(df)} rows imported")
+                    status="processed", details=f"{len(cleaned_df)} rows imported")
+        try:
+            _generate_powerbi_resources(user_id, company_id, session["company_name"], file_id)
+        except Exception as exc:
+            # Power BI artefacts are optional and must not invalidate a valid upload.
+            app.logger.warning("Power BI resource generation skipped: %s", exc)
 
-        _generate_powerbi_resources(user_id, company_id, session["company_name"])
-
-        # ---------- Stats for the front-end ----------
         stats = {
-            "rows": int(len(df)),
-            "columns": int(len(df.columns)),
-            "duplicates": 0,
-            "missing_values": {c: int(df[c].isna().sum()) for c in df.columns},
-            "date_range": "",
-            "revenue_total": float(df["revenue"].fillna(0).sum()),
-            "expenses_total": float(df["expenses"].fillna(0).sum()),
-            "profit_total": float(df["profit"].fillna(0).sum()),
-            "amount_mean": float(df["amount"].dropna().mean()) if df["amount"].notna().any() else 0.0,
-            "amount_max": float(df["amount"].dropna().max()) if df["amount"].notna().any() else 0.0,
-            "amount_min": float(df["amount"].dropna().min()) if df["amount"].notna().any() else 0.0,
+            "rows": int(len(cleaned_df)),
+            "rows_detected": int(len(raw_df)),
+            "columns": int(len(raw_df.columns)),
+            "duplicates_removed": cleaning["duplicates_removed"],
+            "blank_rows_removed": cleaning["blank_rows_removed"],
+            "missing_values_remaining": cleaning["missing_values_remaining"],
+            "invalid_dates": cleaning["invalid_dates"],
+            "date_column": mapping.get("tx_date"),
+            "mapping": mapped_labels,
+            "warnings": warnings,
+            "missing_required": missing_required,
+            "preview": [json_safe_record(record) for record in cleaned_df.head(8).to_dict(orient="records")],
         }
-        # For generic datasets, surface the single largest numeric total so the
-        # upload page still shows something meaningful.
-        num_sums = (
-            df.select_dtypes(include=["number"])
-            .sum()
-            .sort_values(ascending=False)
-        )
-        top_num = None
-        for col in num_sums.index:
-            low = str(col).lower()
-            if any(tok in low for tok in ("tx_", "date", "month", "day", "year", "number")):
-                continue
-            top_num = str(col)
-            break
-        if top_num:
-            stats["top_metric"] = top_num
-            stats["top_metric_total"] = float(num_sums[top_num])
-            if "tx_date" in df.columns and df["tx_date"].notna().any():
-                stats["date_range"] = (
-                    f"{pd.to_datetime(df['tx_date']).min().date()} to "
-                    f"{pd.to_datetime(df['tx_date']).max().date()}"
-                )
-        else:
-            if "tx_date" in df.columns and df["tx_date"].notna().any():
-                stats["date_range"] = (
-                    f"{pd.to_datetime(df['tx_date']).min().date()} to "
-                    f"{pd.to_datetime(df['tx_date']).max().date()}"
-                )
-
-        # Expose the dataset-agnostic profile to the upload screen.  The
-        # financial compatibility columns above remain untouched for legacy
-        # dashboards and exports.
-        analysis_summary = _analysis_context(user_id) or {}
-        detected_types = analysis_summary.get("types", {})
-        stats["numeric_columns"] = [
-            name for name, kind in detected_types.items() if kind == "numeric"
-        ]
-        stats["categorical_columns"] = [
-            name for name, kind in detected_types.items() if kind == "categorical"
-        ]
-        stats["date_column"] = next(
-            (name for name, kind in detected_types.items() if kind == "date"),
-            None,
-        )
-        sections = analysis_summary.get("sections", [])
-        stats["prediction_target"] = sections[0].get("target") if sections else None
+        for column in ("revenue", "expenses", "profit", "amount", "customers", "marketing_spend"):
+            if column in cleaned_df.columns and cleaned_df[column].notna().any():
+                stats[f"{column}_total"] = float(pd.to_numeric(cleaned_df[column], errors="coerce").sum())
+        valid_dates = pd.to_datetime(cleaned_df["tx_date"], errors="coerce").dropna()
+        stats["date_range"] = (f"{valid_dates.min().date()} to {valid_dates.max().date()}"
+                                if not valid_dates.empty else "")
+        stats["numeric_columns"] = [column["source"] for column in detection["columns"] if column["type"] == "numeric"]
+        stats["categorical_columns"] = [column["source"] for column in detection["columns"] if column["type"] == "categorical"]
+        stats["detected_fields"] = detection["fields"]
 
         upload_succeeded = True
         return jsonify({"success": True, "stats": stats, "file_id": file_id})
-
+    except ValueError as exc:
+        app.logger.info("Invalid upload from user %s: %s", user_id, exc)
+        if file_id is not None:
+            run_query("UPDATE uploaded_files SET status='failed' WHERE id=%s AND user_id=%s",
+                      (file_id, user_id), commit=True)
+        return jsonify({"error": str(exc)}), 400
     except Exception as exc:
         app.logger.exception("Upload processing failed for user %s", user_id)
         if file_id is not None:
             run_query("UPDATE uploaded_files SET status='failed' WHERE id=%s AND user_id=%s",
                       (file_id, user_id), commit=True)
-        add_history(user_id, company_id, "upload", safe_name,
-                    file_id=file_id, status="failed", details=str(exc))
+        try:
+            add_history(user_id, company_id, "upload", safe_name, file_id=file_id,
+                        status="failed", details=str(exc))
+        except Exception:
+            app.logger.exception("Could not record failed upload")
         return jsonify({"error": "We could not process this file. Please try again."}), 500
     finally:
-        # Invalid and failed uploads should not consume a user's storage forever.
         if not upload_succeeded and disk_path.exists():
             try:
                 disk_path.unlink()
@@ -1384,10 +1453,9 @@ def _train_risk_model_for(user_id: int, df: pd.DataFrame) -> None:
     """Train risk classifier using improved ML pipeline.
     
     Uses:
-    - Proper train/test split (chronological)
-    - Pre-defined risk thresholds (no target leakage)
-    - DecisionTreeClassifier with optimized hyperparameters
-    - Cross-validation for stability assessment
+    - Chronological daily aggregation
+    - Pre-defined risk thresholds with no target leakage
+    - Transparent rule-based risk scoring
     - Model persistence to disk with metadata
     
     Risk classification is based on deterministic business rules:
@@ -1442,10 +1510,13 @@ def _train_risk_model_for(user_id: int, df: pd.DataFrame) -> None:
             print(f"[finsight] Risk ML pipeline error: {e}")
             traceback.print_exc()
     
-    # Fallback to old training if pipeline not available
-    print("[finsight] Falling back to legacy risk model training")
+    # If the ML module is unavailable, retain the same transparent risk rules
+    # in session rather than falling back to a classifier trained on its own
+    # derived labels.
+    print("[finsight] Falling back to rule-based risk scoring")
     features = ["revenue", "expenses", "profit", "amount"]
-    if df.empty or "tx_date" not in df.columns or any(c not in df.columns for c in features):
+    if (RuleBasedRiskModel is None or df.empty or "tx_date" not in df.columns
+            or any(c not in df.columns for c in features)):
         models["risk"] = None
         return
     working = df.copy()
@@ -1455,17 +1526,9 @@ def _train_risk_model_for(user_id: int, df: pd.DataFrame) -> None:
     if periods.empty:
         models["risk"] = None
         return
-    revenue = periods["revenue"].replace(0, np.nan)
-    margin = (periods["profit"] / revenue).fillna(-1)
-    expense_ratio = (periods["expenses"] / revenue).replace([np.inf, -np.inf], np.nan).fillna(1)
-    periods["risk_label"] = np.select(
-        [(periods["profit"] < 0) | (expense_ratio > 1), (margin < 0.08) | (expense_ratio > 0.85)],
-        ["HIGH RISK", "MEDIUM RISK"], default="LOW RISK",
-    )
     try:
-        classifier = DecisionTreeClassifier(max_depth=3, min_samples_leaf=2, random_state=42)
-        classifier.fit(periods[features], periods["risk_label"])
-        models["risk"] = {"model": classifier, "features": features, "periods": len(periods)}
+        rule_model = RuleBasedRiskModel()
+        models["risk"] = {"model": rule_model, "features": features, "periods": len(periods)}
     except Exception as exc:
         print(f"[finsight] Could not train risk classifier: {exc}")
         models["risk"] = None
@@ -1474,6 +1537,37 @@ def _train_risk_model_for(user_id: int, df: pd.DataFrame) -> None:
 # =====================================================
 # Routes - Predictions
 # =====================================================
+MIN_FORECAST_OBSERVATIONS = 12
+
+
+def _forecast_targets(df: pd.DataFrame | None) -> list[str]:
+    """Return numeric financial targets with enough dated history to try."""
+    if df is None or df.empty or "tx_date" not in df.columns:
+        return []
+    result = []
+    dates = pd.to_datetime(df["tx_date"], errors="coerce")
+    for target in ("revenue", "expenses", "profit", "amount"):
+        if target not in df.columns:
+            continue
+        values = pd.to_numeric(df[target], errors="coerce")
+        valid_values = values[dates.notna()].dropna()
+        if (len(valid_values) >= MIN_FORECAST_OBSERVATIONS
+                and valid_values.nunique() >= 2):
+            result.append(target)
+    return result
+
+
+def _forecast_step_days(df: pd.DataFrame) -> int:
+    dates = pd.to_datetime(df.get("tx_date"), errors="coerce").dropna().sort_values().drop_duplicates()
+    if len(dates) < 2:
+        return 1
+    step = dates.diff().dt.total_seconds().div(86400).dropna().median()
+    try:
+        return max(1, min(366, int(round(float(step)))))
+    except (TypeError, ValueError):
+        return 1
+
+
 @app.route("/predict", methods=["GET", "POST"])
 @login_required
 def predict():
@@ -1488,6 +1582,13 @@ def predict():
                 pd.to_datetime(df["tx_date"], errors="coerce")
                 .dropna().dt.strftime("%Y-%m-%d").unique().tolist()
             )
+        forecast_targets = _forecast_targets(df)
+        if available_dates:
+            next_history_date = (pd.to_datetime(available_dates[-1]) +
+                                 pd.Timedelta(days=_forecast_step_days(df))).date()
+            default_date = max(date.today() + timedelta(days=1), next_history_date).isoformat()
+        else:
+            default_date = (date.today() + timedelta(days=1)).isoformat()
         # Universal, dataset-agnostic prediction sections + business insight.
         analysis = _analysis_context(user_id)
         date_column = next(
@@ -1502,8 +1603,11 @@ def predict():
                 df is not None and not df.empty
             ) or analysis is not None and bool(analysis.get("sections")),
             risk_min_date=(date.today() + timedelta(days=1)).isoformat(),
-            risk_max_date=available_dates[-1] if available_dates else "",
-            risk_default_date=(date.today() + timedelta(days=1)).isoformat() if available_dates else "",
+            risk_max_date="",
+            risk_default_date=default_date,
+            forecast_targets=forecast_targets,
+            expense_targets=[target for target in forecast_targets if target in {"expenses", "profit", "amount"}],
+            risk_available=all(target in forecast_targets for target in ("revenue", "expenses", "profit")),
             analysis=analysis if analysis is not None else {},
             insight=(analysis or {}).get("insight", ""),
             section_types=(analysis or {}).get("types", {}),
@@ -1515,7 +1619,10 @@ def predict():
     payload = request.get_json(silent=True) or {}
     model_type = payload.get("model_type")
     date_str = payload.get("date")
-    forecast_periods = payload.get("forecast_periods", 1)
+    try:
+        forecast_periods = max(1, min(24, int(payload.get("forecast_periods", 1))))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Forecast horizon must be a whole number between 1 and 24."}), 400
 
     # ---------- Dynamic (universal) prediction support ----------
     if model_type not in ("amount", "expenses", "revenue", "profit"):
@@ -1571,26 +1678,41 @@ def predict():
         return jsonify({"error": _message("api.error.predict_need_data")}), 400
 
     try:
-        if get_pipeline is not None:
-            predicted_value, prediction_info = get_pipeline().predict_regression(
-                user_id, model_type, {}, history_df=df, prediction_date=target_date
-            )
-            if predicted_value is None:
-                return jsonify({"error": prediction_info.get("error") or _message("api.error.predict_invalid_input")}), 400
-        else:
-            date_number = (pd.to_datetime(target_date) - model_info["df_min"]).days
-            X_future = pd.DataFrame({"Date_Number": [date_number], "Month": [target_date.month],
-                                     "Day_of_Week": [target_date.weekday()]})
-            predicted_value = float(model_info["model"].predict(X_future)[0])
-            prediction_info = {
-                "model_name": "linear_regression",
-                "estimated_error": model_info.get("metrics", {}).get("rmse", 0),
-            }
-        predicted_value = round(predicted_value, 2)
+        step_days = _forecast_step_days(df)
+        forecast_points = []
+        prediction_info = {}
+        for period in range(forecast_periods):
+            forecast_date = target_date + timedelta(days=step_days * period)
+            if get_pipeline is not None:
+                value, info = get_pipeline().predict_regression(
+                    user_id, model_type, {}, history_df=df, prediction_date=forecast_date
+                )
+                if value is None:
+                    return jsonify({"error": info.get("error") or _message("api.error.predict_invalid_input")}), 400
+                predicted_value = float(value)
+                prediction_info = info or {}
+            else:
+                date_number = (pd.to_datetime(forecast_date) - model_info["df_min"]).days
+                X_future = pd.DataFrame({"Date_Number": [date_number], "Month": [forecast_date.month],
+                                             "Day_of_Week": [forecast_date.weekday()]})
+                predicted_value = float(model_info["model"].predict(X_future)[0])
+                prediction_info = {
+                    "model_name": "linear_regression",
+                    "estimated_error": model_info.get("metrics", {}).get("rmse", 0),
+                }
+            matching = df[pd.to_datetime(df["tx_date"], errors="coerce").dt.date == forecast_date]
+            actual_value = None
+            if not matching.empty and model_type in matching.columns:
+                actual_value = round(float(pd.to_numeric(matching[model_type], errors="coerce").fillna(0).sum()), 2)
+            forecast_points.append({
+                "date": str(forecast_date), "value": round(predicted_value, 2),
+                "actual": actual_value,
+            })
 
-        # Give the UI a meaningful, per-metric reference point.  This makes
-        # advice compare this forecast with the user's recent actual data
-        # instead of repeating generic text for every request.
+        predicted_value = forecast_points[0]["value"]
+
+        # Give the UI a meaningful, per-metric reference point. This makes
+        # advice compare this forecast with the user's recent actual data.
         recent_baseline = None
         if model_type in df.columns:
             recent_values = pd.to_numeric(df[model_type], errors="coerce").dropna().tail(7)
@@ -1600,40 +1722,38 @@ def predict():
         # Save the prediction
         file_id = dataset_id
 
-        actual_value = None
-        if "tx_date" in df.columns and model_type in df.columns:
-            matching = df[pd.to_datetime(df["tx_date"], errors="coerce").dt.date == target_date]
-            if not matching.empty:
-                actual_value = round(float(matching[model_type].fillna(0).sum()), 2)
-        prediction_error = round(actual_value - predicted_value, 2) if actual_value is not None else None
-
-        prediction_id = run_query(
-            """
-            INSERT INTO predictions
-                (user_id, company_id, uploaded_file_id,
-                 prediction_type, prediction_date, actual_value, predicted_value,
-                 prediction_error, model_name)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-            (user_id, company_id, file_id, model_type, target_date, actual_value,
-             predicted_value, prediction_error, "linear_regression"),
-            commit=True,
-        )["last_id"]
+        prediction_ids = []
+        for point in forecast_points:
+            actual_value = point["actual"]
+            prediction_error = round(actual_value - point["value"], 2) if actual_value is not None else None
+            prediction_id = run_query(
+                """INSERT INTO predictions
+                   (user_id, company_id, uploaded_file_id, prediction_type, prediction_date,
+                    actual_value, predicted_value, prediction_error, model_name)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                (user_id, company_id, file_id, model_type, point["date"], actual_value,
+                 point["value"], prediction_error, prediction_info.get("model_name", "linear_regression")),
+                commit=True,
+            )["last_id"]
+            prediction_ids.append(prediction_id)
 
         add_history(
             user_id, company_id, "prediction",
-            f"{model_type.title()} forecast for {target_date}",
-            prediction_id=prediction_id, file_id=file_id,
-            status="ok", details=f"value={predicted_value}; actual={actual_value}; error={prediction_error}",
+            f"{model_type.title()} forecast from {target_date}",
+            prediction_id=prediction_ids[0], file_id=file_id,
+            status="ok", details=f"periods={forecast_periods}; first_value={predicted_value}",
         )
 
-        _generate_powerbi_resources(user_id, company_id, session["company_name"])
+        try:
+            _generate_powerbi_resources(user_id, company_id, session["company_name"])
+        except Exception as exc:
+            app.logger.warning("Power BI resource refresh skipped after prediction: %s", exc)
 
         # Build the historical + prediction chart
         # A chart is an enhancement, never a reason for a valid ML result to
         # fail (some matplotlib backends can be unavailable on Windows).
         try:
-            chart = _build_chart(df, model_type, target_date, predicted_value)
+            chart = _build_chart(df, model_type, forecast_points)
         except Exception as chart_exc:
             print(f"[finsight] Chart rendering skipped: {chart_exc}")
             chart = ""
@@ -1643,8 +1763,15 @@ def predict():
             "prediction": predicted_value,
             "date": str(target_date),
             "model_type": model_type,
+            "forecast_periods": forecast_periods,
+            "forecasts": forecast_points,
+            "history": [
+                {"date": str(pd.to_datetime(row["tx_date"]).date()), "value": float(row[model_type])}
+                for _, row in df.dropna(subset=["tx_date", model_type]).tail(60).iterrows()
+            ],
             "chart": chart,
-            "prediction_id": prediction_id,
+            "prediction_id": prediction_ids[0],
+            "prediction_ids": prediction_ids,
             "baseline": recent_baseline,
             "model": {
                 "name": prediction_info.get("model_name", "linear_regression"),
@@ -1656,8 +1783,7 @@ def predict():
         return jsonify({"error": _message("api.error.predict_failed", error=str(exc))}), 500
 
 
-def _build_chart(df: pd.DataFrame, model_type: str,
-                 forecast_date: date, predicted_value: float) -> str:
+def _build_chart(df: pd.DataFrame, model_type: str, forecast_points: list[dict]) -> str:
     column_map = {"amount": "amount", "expenses": "expenses",
                   "revenue": "revenue", "profit": "profit"}
     col = column_map.get(model_type)
@@ -1671,8 +1797,10 @@ def _build_chart(df: pd.DataFrame, model_type: str,
     plt.figure(figsize=(10, 5))
     plt.plot(df_plot["tx_date"], df_plot[col], marker="o",
              linewidth=2, label=f"Historical {col.title()}")
-    plt.scatter([pd.to_datetime(forecast_date)], [predicted_value],
-                color="red", s=120, zorder=5, label="Forecast")
+    forecast_dates = [pd.to_datetime(point["date"]) for point in forecast_points]
+    forecast_values = [point["value"] for point in forecast_points]
+    plt.plot(forecast_dates, forecast_values, color="red", marker="o",
+             linewidth=2, linestyle="--", zorder=5, label="Forecast")
     plt.title(f"{col.title()} Forecast")
     plt.xlabel("Date")
     plt.ylabel(col.title())
@@ -1801,6 +1929,37 @@ def history():
         "history.html",
         company_name=session["company_name"],
         history=events,
+    )
+
+
+@app.get("/database")
+@login_required
+def database():
+    """Compatibility view for the database-backed upload/prediction activity."""
+    return history()
+
+
+@app.get("/settings")
+@login_required
+def settings():
+    """Show the signed-in account and active application settings."""
+    account = run_query(
+        """SELECT u.name, u.email, u.created_at, c.company_name
+           FROM users u JOIN companies c ON c.id = u.company_id
+           WHERE u.id=%s""",
+        (_session_user_id(),), fetchone=True,
+    )["row"] or {
+        "name": session.get("user_name", ""),
+        "email": "",
+        "company_name": session.get("company_name", ""),
+        "created_at": None,
+    }
+    return render_template(
+        "settings.html",
+        company_name=session["company_name"],
+        account=account,
+        supported_formats="CSV, XLSX, XLS, JSON",
+        max_upload_mb=round(MAX_CONTENT_LENGTH / (1024 * 1024), 2),
     )
 
 
@@ -2065,6 +2224,7 @@ def _powerbi_export_frames(user_id: int, company_name: str,
         """
          SELECT tx_date AS Date, transaction_id AS Transaction_ID, description AS Description,
                amount AS Amount, revenue AS Revenue, expenses AS Expenses, profit AS Profit,
+               customers AS Customers, marketing_spend AS Marketing_Spend,
                tx_type AS Transaction_Type, category AS Category,
                payment_method AS Payment_Method, department AS Department, city AS City,
              status AS Status, uploaded_file_id AS Upload_File_ID, user_id AS User_ID,
@@ -2092,7 +2252,7 @@ def _powerbi_export_frames(user_id: int, company_name: str,
 
     cleaned_columns = [
         "Date", "Transaction_ID", "Description", "Amount", "Revenue", "Expenses",
-        "Profit", "Transaction_Type", "Category", "Payment_Method", "Department",
+        "Profit", "Customers", "Marketing_Spend", "Transaction_Type", "Category", "Payment_Method", "Department",
         "City", "Status", "Upload_File_ID", "User_ID", "Imported_At",
     ]
     prediction_columns = [
@@ -2101,7 +2261,7 @@ def _powerbi_export_frames(user_id: int, company_name: str,
     ]
     cleaned = pd.DataFrame(cleaned_rows).reindex(columns=cleaned_columns)
     predictions = pd.DataFrame(prediction_rows).reindex(columns=prediction_columns)
-    metric_columns = ["Amount", "Revenue", "Expenses", "Profit"]
+    metric_columns = ["Amount", "Revenue", "Expenses", "Profit", "Customers", "Marketing_Spend"]
     for column in metric_columns:
         cleaned[column] = pd.to_numeric(cleaned[column], errors="coerce")
     cleaned["Company"] = company_name
@@ -2134,6 +2294,7 @@ def _powerbi_export_frames(user_id: int, company_name: str,
             monthly = dated.groupby("Month", as_index=False).agg(
                 Amount=("Amount", "sum"), Revenue=("Revenue", "sum"),
                 Expenses=("Expenses", "sum"), Profit=("Profit", "sum"),
+                Customers=("Customers", "sum"), Marketing_Spend=("Marketing_Spend", "sum"),
                 Transactions=("Date", "size"),
             )
         grouped = cleaned.copy()
@@ -2141,6 +2302,7 @@ def _powerbi_export_frames(user_id: int, company_name: str,
         categories = grouped.groupby("Category", as_index=False).agg(
             Amount=("Amount", "sum"), Revenue=("Revenue", "sum"),
             Expenses=("Expenses", "sum"), Profit=("Profit", "sum"),
+            Customers=("Customers", "sum"), Marketing_Spend=("Marketing_Spend", "sum"),
             Transactions=("Category", "size"),
         ).sort_values("Revenue", ascending=False)
 
@@ -2153,7 +2315,8 @@ def _powerbi_export_frames(user_id: int, company_name: str,
         return dimension.groupby(column, as_index=False).agg(
             Transactions=(column, "size"), Amount=("Amount", "sum"),
             Revenue=("Revenue", "sum"), Expenses=("Expenses", "sum"),
-            Profit=("Profit", "sum"),
+            Profit=("Profit", "sum"), Customers=("Customers", "sum"),
+            Marketing_Spend=("Marketing_Spend", "sum"),
         ).sort_values("Transactions", ascending=False)
 
     distributions = {

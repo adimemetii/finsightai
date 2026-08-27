@@ -27,6 +27,22 @@ def _env(name: str, default: str = "") -> str:
     return os.environ.get(name, default).strip()
 
 
+def _db_env(name: str, default: str = "") -> str:
+    aliases = {
+        "DB_HOST": ("DB_HOST", "MYSQL_HOST"),
+        "DB_PORT": ("DB_PORT", "MYSQL_PORT"),
+        "DB_USER": ("DB_USER", "MYSQL_USER"),
+        "DB_PASSWORD": ("DB_PASSWORD", "MYSQL_PASSWORD"),
+        "DB_NAME": ("DB_NAME", "MYSQL_DATABASE"),
+        "DB_SSL_CA": ("DB_SSL_CA", "MYSQL_SSL_CA"),
+    }
+    for candidate in aliases.get(name, (name,)):
+        value = _env(candidate)
+        if value:
+            return value
+    return default
+
+
 def _try(host: str, port: int, user: str, password: str, database: str, ssl_ca: str) -> tuple[bool, str]:
     try:
         config = dict(
@@ -56,17 +72,17 @@ def _try(host: str, port: int, user: str, password: str, database: str, ssl_ca: 
 
 
 def main() -> int:
-    required = ("DB_HOST", "DB_PORT", "DB_USER", "DB_PASSWORD", "DB_NAME")
-    missing = [name for name in required if not _env(name)]
+    required = ("DB_HOST", "DB_USER", "DB_NAME")
+    missing = [name for name in required if not _db_env(name)]
     if missing:
         print("Missing required database environment variable(s): " + ", ".join(missing))
         return 1
-    host = _env("DB_HOST")
-    port = int(_env("DB_PORT"))
-    user = _env("DB_USER")
-    password = _env("DB_PASSWORD")
-    database = _env("DB_NAME")
-    ssl_ca = _env("DB_SSL_CA")
+    host = _db_env("DB_HOST")
+    port = int(_db_env("DB_PORT", "3306"))
+    user = _db_env("DB_USER")
+    password = _db_env("DB_PASSWORD")
+    database = _db_env("DB_NAME")
+    ssl_ca = _db_env("DB_SSL_CA")
 
     print("=" * 60)
     print(" FinSight AI - MySQL diagnostic")
@@ -84,7 +100,7 @@ def main() -> int:
         print()
         print("Connection works. You can start the Flask app with `python app.py`.")
         return 0
-        print("Check DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, and DB_NAME; optionally set DB_SSL_CA.")
+    print("Check DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, and DB_NAME; optionally set DB_SSL_CA.")
     return 1
 
 

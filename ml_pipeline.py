@@ -35,18 +35,14 @@ from typing import Optional, Tuple, Dict, Any
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import TimeSeriesSplit, cross_validate, GridSearchCV
+from sklearn.model_selection import TimeSeriesSplit, cross_validate
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LinearRegression, Ridge, Lasso
-from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
+from sklearn.tree import DecisionTreeRegressor
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
-from sklearn.metrics import (
-    mean_absolute_error, mean_squared_error, r2_score,
-    accuracy_score, precision_score, recall_score, f1_score,
-    confusion_matrix, roc_auc_score, classification_report
-)
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +101,38 @@ REGRESSION_MODELS = {
         }
     }
 }
+
+
+class RuleBasedRiskModel:
+    """Transparent risk scorer used instead of training on self-derived labels."""
+
+    classes_ = np.array(["HIGH RISK", "MEDIUM RISK", "LOW RISK"])
+
+    @staticmethod
+    def _label(row: dict[str, Any]) -> str:
+        def finite(name: str) -> float:
+            try:
+                value = float(row.get(name, 0) or 0)
+                return value if np.isfinite(value) else 0.0
+            except (TypeError, ValueError):
+                return 0.0
+
+        revenue = finite("revenue")
+        expenses = finite("expenses")
+        profit = finite("profit")
+        if profit < 0 or expenses > revenue:
+            return "HIGH RISK"
+        if revenue > 0 and profit / revenue < 0.08:
+            return "MEDIUM RISK"
+        return "LOW RISK"
+
+    def predict(self, frame: pd.DataFrame) -> np.ndarray:
+        return np.array([self._label(row) for row in frame.to_dict(orient="records")])
+
+    def predict_proba(self, frame: pd.DataFrame) -> np.ndarray:
+        labels = self.predict(frame)
+        return np.array([[1.0 if label == class_name else 0.0 for class_name in self.classes_]
+                         for label in labels])
 
 # ============================================================================
 # Data Validation & Preprocessing
@@ -393,6 +421,18 @@ class MLPipeline:
         numeric_cols = [c for c in df.select_dtypes(include=[np.number]).columns
                         if c in temporal or c.startswith(f"{target}_lag")
                         or c.startswith(f"{target}_rolling_")]
+
+        # The first fold of the time-series cross-validation has only about a
+        # quarter of the training rows.  A lag longer than that fold is empty
+        # there and only creates noisy imputer warnings, so use it only when
+        # the dataset is large enough to support it.
+        minimum_cv_history = max(1, len(df) // 4 - 1)
+        numeric_cols = [
+            column for column in numeric_cols
+            if not (column.startswith(f"{target}_lag") and
+                    column.rsplit("lag", 1)[-1].isdigit() and
+                    int(column.rsplit("lag", 1)[-1]) > minimum_cv_history)
+        ]
         
         # Remove columns with too many NaN
         valid_cols = []
@@ -506,6 +546,14 @@ class MLPipeline:
             if len(train_df) < MIN_TRAINING_SAMPLES or len(test_df) < 2:
                 result['error'] = f"Insufficient data for train/test split"
                 return result
+
+            # A lag can be valid in the full frame but still be entirely empty
+            # in a short training partition. Drop those columns before fitting
+            # so sklearn does not silently skip them during imputation.
+            features = [feature for feature in features if train_df[feature].notna().any()]
+            if not features:
+                result['error'] = "No valid features found in the training period"
+                return result
             
             X_train = train_df[features].apply(pd.to_numeric, errors='coerce').replace([np.inf, -np.inf], np.nan)
             y_train = pd.to_numeric(train_df[target], errors='coerce').replace([np.inf, -np.inf], np.nan)
@@ -567,7 +615,13 @@ class MLPipeline:
         return result
     
     def train_risk_classifier(self, df: pd.DataFrame, user_id: int) -> Dict:
-        """Train risk classifier with proper train/test split."""
+        """Build a transparent risk model from business rules.
+
+        Risk labels are defined by the same current-period financial values
+        supplied to the model. Training a classifier on those values would
+        leak the target into the features, so the public API persists a
+        transparent rule model instead.
+        """
         result = {
             'success': False,
             'user_id': user_id,
@@ -575,14 +629,12 @@ class MLPipeline:
             'error': None,
             'metrics': {},
         }
-        
+
         try:
-            # Prepare data
             is_valid, msg = self.validator.validate_dataframe(df, ['tx_date'])
             if not is_valid:
                 result['error'] = msg
                 return result
-            
             working = df.copy()
             working['tx_date'] = pd.to_datetime(working['tx_date'], errors='coerce')
             working = working.dropna(subset=['tx_date'])
@@ -591,103 +643,49 @@ class MLPipeline:
                 if feature not in working:
                     working[feature] = np.nan
                 working[feature] = pd.to_numeric(working[feature], errors='coerce').replace([np.inf, -np.inf], np.nan)
-            
-            # Aggregate to daily level for risk classification
             daily_data = working.groupby(working['tx_date'].dt.date)[features].sum(min_count=1)
-            daily_data = daily_data.replace([np.inf, -np.inf], np.nan)
-            daily_data = daily_data.fillna(daily_data.median(numeric_only=True)).fillna(0)
-            
+            daily_data = daily_data.replace([np.inf, -np.inf], np.nan).fillna(
+                daily_data.median(numeric_only=True)).fillna(0)
             if len(daily_data) < MIN_TRAINING_SAMPLES:
                 result['error'] = f"Insufficient daily periods: {len(daily_data)} < {MIN_TRAINING_SAMPLES}"
                 return result
-            
-            # Create risk labels BEFORE any features (no leakage)
-            # Using predetermined thresholds from domain knowledge
-            labels = []
-            for _, row in daily_data.iterrows():
-                profit = row.get('profit', 0)
-                revenue = row.get('revenue', 0)
-                expenses = row.get('expenses', 0)
-                
-                # Risk assessment logic
-                if profit < 0 or expenses > revenue:
-                    labels.append("HIGH RISK")
-                elif revenue > 0 and (profit / revenue) < 0.08:
-                    labels.append("MEDIUM RISK")
-                else:
-                    labels.append("LOW RISK")
-            
-            daily_data['risk_label'] = labels
-            
-            # Create features from available data
-            X = daily_data[features].replace([np.inf, -np.inf], np.nan)
-            y = daily_data['risk_label']
-            
-            # Split chronologically
-            split_idx = int(len(X) * 0.8)
-            X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
-            y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
-            
-            if len(X_train) < 5 or len(X_test) < 2:
-                result['error'] = "Insufficient data for train/test split in risk classifier"
-                return result
-            
-            # Train classifier
-            classifier = DecisionTreeClassifier(
-                max_depth=5,
-                min_samples_split=3,
-                min_samples_leaf=2,
-                random_state=RANDOM_SEED
-            )
-            classifier.fit(X_train, y_train)
-            
-            # Evaluate
-            y_train_pred = classifier.predict(X_train)
-            y_test_pred = classifier.predict(X_test)
-            
+
+            rule_model = RuleBasedRiskModel()
+            labels = rule_model.predict(daily_data[features])
+            split_idx = max(1, int(len(daily_data) * 0.8))
+            train_labels, test_labels = labels[:split_idx], labels[split_idx:]
             metrics = {
                 'features_used': features,
                 'n_daily_periods': len(daily_data),
-                'n_train': len(X_train),
-                'n_test': len(X_test),
-                'train_accuracy': float(accuracy_score(y_train, y_train_pred)),
-                'test_accuracy': float(accuracy_score(y_test, y_test_pred)),
-                'train_f1_weighted': float(f1_score(y_train, y_train_pred, average='weighted', zero_division=0)),
-                'test_f1_weighted': float(f1_score(y_test, y_test_pred, average='weighted', zero_division=0)),
-                'confusion_matrix': confusion_matrix(y_test, y_test_pred).tolist(),
-                'classification_report': classification_report(y_test, y_test_pred, output_dict=True),
+                'n_train': len(train_labels),
+                'n_test': len(test_labels),
+                'train_accuracy': 1.0,
+                'test_accuracy': 1.0 if len(test_labels) else None,
+                'train_f1_weighted': 1.0,
+                'test_f1_weighted': 1.0 if len(test_labels) else None,
+                'evaluation_method': 'deterministic_business_rules',
+                'overfitting_warning': 'Not applicable: no learned classifier is used.',
             }
-            
-            # Check for overfitting
-            acc_gap = abs(metrics['train_accuracy'] - metrics['test_accuracy'])
-            if acc_gap > 0.20:
-                metrics['overfitting_warning'] = f"High (accuracy gap: {acc_gap:.2f})"
-            else:
-                metrics['overfitting_warning'] = "Low"
-            
-            # Save model
             metadata = {
                 'features': features,
-                'label_distribution': y.value_counts().to_dict(),
+                'rule_based': True,
+                'label_distribution': pd.Series(labels).value_counts().to_dict(),
                 'training_date': datetime.now().isoformat(),
                 'risk_thresholds': {
                     'high_risk': 'profit < 0 OR expenses > revenue',
                     'medium_risk': 'revenue > 0 AND profit_margin < 0.08',
-                    'low_risk': 'otherwise'
+                    'low_risk': 'otherwise',
                 },
             }
-            
-            self._save_model(user_id, 'risk', classifier, metadata)
-            
+            self._save_model(user_id, 'risk', rule_model, metadata)
             result['success'] = True
             result['metrics'] = metrics
-            logger.info(f"Risk classifier trained: accuracy={metrics['test_accuracy']:.4f}")
-            
+            return result
         except Exception as e:
             result['error'] = str(e)
-            logger.error(f"Risk classifier training error: {e}\n{traceback.format_exc()}")
+            logger.error(f"Rule-based risk training error: {e}\\n{traceback.format_exc()}")
+            return result
         
-        return result
     
     def _forecast_features(self, history_df: pd.DataFrame, target: str,
                            prediction_date: date, features: list) -> Tuple[Optional[pd.DataFrame], Optional[str]]:
@@ -731,11 +729,11 @@ class MLPipeline:
                 if error:
                     return None, {'error': error}
             else:
-                input_df = pd.DataFrame([new_data])
-                missing = [feature for feature in features if feature not in input_df.columns]
-                if missing:
-                    return None, {'error': f"Prediction input is missing required features: {missing}"}
-                X = input_df[features].apply(pd.to_numeric, errors="coerce")
+                input_df = pd.DataFrame([new_data or {}]).reindex(columns=features)
+                if not any(feature in (new_data or {}) for feature in features):
+                    return None, {'error': "Prediction input does not contain any recognized model features."}
+                missing = [feature for feature in features if feature not in (new_data or {})]
+                X = input_df.apply(pd.to_numeric, errors="coerce")
                 X = X.replace([np.inf, -np.inf], np.nan)
             
             # Predict
@@ -752,6 +750,7 @@ class MLPipeline:
                 'features_used': len(features),
                 'estimated_error': test_rmse,
                 'model_name': metadata.get('best_model'),
+                'imputed_features': missing,
             }
         
         except Exception as e:
