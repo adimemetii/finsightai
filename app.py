@@ -302,14 +302,18 @@ def run_query(sql: str, params: tuple | list | None = None, *, fetchone=False, f
         conn.close()
 
 
-# This is the schema contract declared in init_db.py. Metadata discovery is
-# not needed for authentication or account creation.
-_REPOSITORY_USER_COLUMNS = {
-    "display": "name",
-    "email": "email",
-    "password": "password_hash",
-    "company_id": "company_id",
-    "created_at": "created_at",
+# Existing deployments may use the older users-table naming convention. Keep
+# the aliases deliberately small and only interpolate names returned by the
+# database itself into SQL identifiers.
+_USER_COLUMN_ALIASES = {
+    "display": ("name", "full_name", "username", "user_name", "display_name"),
+    "first_name": ("firstName", "first_name", "firstname"),
+    "last_name": ("lastName", "last_name", "lastname"),
+    "email": ("email", "email_address"),
+    "password": ("password_hash", "password", "passwd", "hashed_password"),
+    "company_id": ("company_id", "companyId"),
+    "role": ("role", "user_role"),
+    "created_at": ("created_at", "createdAt"),
 }
 
 
@@ -317,15 +321,40 @@ def _quote_identifier(value: str) -> str:
     return "`" + value.replace("`", "``") + "`"
 
 
-def _load_user_columns() -> dict[str, str]:
-    """Return the users columns declared by the repository schema.
+def _find_user_columns(cursor) -> dict[str, str]:
+    """Discover live users-table columns without querying information_schema.
 
-    Authentication and account creation must not depend on an optional
-    information_schema read. ``init_db.py`` is the schema contract used by
-    this application, so use it directly and fail with the real SQL error if
-    the deployment is running a different, incompatible database schema.
+    Some hosted MySQL accounts can query ``users`` but cannot see its
+    ``information_schema`` rows. A zero-row SELECT still exposes the table's
+    column metadata through the connector and works for both old and current
+    schemas.
     """
-    return dict(_REPOSITORY_USER_COLUMNS)
+    cursor.execute("SELECT * FROM users LIMIT 0")
+    available = {}
+    for metadata in cursor.description or ():
+        value = metadata[0] if metadata else None
+        if value:
+            available[str(value).lower()] = str(value)
+
+    result = {}
+    for logical_name, aliases in _USER_COLUMN_ALIASES.items():
+        for alias in aliases:
+            actual = available.get(alias.lower())
+            if actual:
+                result[logical_name] = actual
+                break
+    return result
+
+
+def _load_user_columns() -> dict[str, str]:
+    """Return column names from the live users table."""
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        return _find_user_columns(cursor)
+    finally:
+        cursor.close()
+        conn.close()
 
 
 def _user_display_expression(columns: dict[str, str], qualifier: str = "u") -> str:

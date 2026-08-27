@@ -477,6 +477,11 @@ def create_tables() -> None:
         cursor = conn.cursor()
         for ddl in TABLES:
             cursor.execute(ddl)
+        # Older deployments may already have a users table created before the
+        # current display-name column was introduced. Keep existing rows and
+        # let the application use live-schema aliases until they are migrated.
+        add_column_if_missing(cursor, "users", "name",
+                              "VARCHAR(120) NOT NULL DEFAULT '' AFTER id")
         add_column_if_missing(cursor, "uploaded_files", "version",
                               "INT NOT NULL DEFAULT 1 AFTER company_id")
         add_column_if_missing(cursor, "uploaded_files", "source_format",
