@@ -1908,6 +1908,14 @@ def predict():
                 value, info = get_pipeline().predict_regression(
                     user_id, model_type, {}, history_df=df, prediction_date=forecast_date
                 )
+                # A model may have been persisted by an older pipeline
+                # version or for a previous upload. Rebuild once from the
+                # active dataset before returning a user-facing failure.
+                if value is None:
+                    _train_models_for(user_id, df)
+                    value, info = get_pipeline().predict_regression(
+                        user_id, model_type, {}, history_df=df, prediction_date=forecast_date
+                    )
                 if value is None:
                     return jsonify({"error": info.get("error") or _message("api.error.predict_invalid_input")}), 400
                 predicted_value = float(value)

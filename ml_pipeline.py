@@ -711,6 +711,11 @@ class MLPipeline:
         future = self.engineer.create_temporal_features(future)
         future = self.engineer.create_lag_features(future, lags=[1, 7, 30], columns=[target])
         future = self.engineer.create_rolling_features(future, windows=[7, 30], columns=[target])
+        # Keep forecasts compatible with models created by the earlier
+        # pipeline, which used the legacy temporal feature names.
+        future["Date_Number"] = future.get("days_since_start")
+        future["Month"] = future.get("month")
+        future["Day_of_Week"] = future.get("day_of_week")
         missing = [name for name in features if name not in future.columns]
         if missing:
             return None, f"Saved model requires unavailable features: {missing}"

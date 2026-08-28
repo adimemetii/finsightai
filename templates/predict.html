@@ -77,6 +77,20 @@ const escapeHtml = value => String(value ?? '').replace(/[&<>'\"]/g, char => ({ 
 const money = value => new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(Number(value) || 0);
 const label = target => String(target).replaceAll('_', ' ').replace(/\b\w/g, char => char.toUpperCase());
 
+async function postJson(url, payload) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
+    },
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw { response: { data } };
+  return { data };
+}
+
 function renderForecast(result, target, container) {
   const forecasts = result.forecasts || [];
   const rows = forecasts.map(point => `<tr><td>${escapeHtml(point.date)}</td><td>${money(point.value)}</td><td>${point.actual === null || point.actual === undefined ? '—' : money(point.actual)}</td></tr>`).join('');
@@ -92,7 +106,7 @@ async function requestForecast(target, dateId, horizonId, resultId, button) {
   button.disabled = true;
   container.innerHTML = '<div class="text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Generating forecast…</div>';
   try {
-    const response = await axios.post(predictionUrl, { model_type: target, date, forecast_periods: horizon });
+    const response = await postJson(predictionUrl, { model_type: target, date, forecast_periods: horizon });
     renderForecast(response.data, target, container);
   } catch (error) {
     container.innerHTML = `<div class="alert alert-danger">${escapeHtml(error.response?.data?.error || 'Not enough historical data to generate a reliable forecast.')}</div>`;
@@ -108,7 +122,7 @@ const riskButton = document.getElementById('classifyRisk');
 if (riskButton) riskButton.addEventListener('click', async () => {
   const result = document.getElementById('riskResult'); riskButton.disabled = true;
   try {
-    const response = await axios.post(riskUrl, { date: document.getElementById('riskDate').value });
+    const response = await postJson(riskUrl, { date: document.getElementById('riskDate').value });
     const data = response.data;
     result.innerHTML = `<div class="alert alert-${data.risk_level === 'HIGH RISK' ? 'danger' : data.risk_level === 'MEDIUM RISK' ? 'warning' : 'success'} mb-0"><strong>${escapeHtml(data.risk_level)}</strong><p class="mb-1 mt-2">${escapeHtml(data.explanation)}</p><small>Revenue ${money(data.revenue)} · Expenses ${money(data.expenses)} · Profit ${money(data.profit)}</small></div>`;
   } catch (error) { result.innerHTML = `<div class="alert alert-danger mb-0">${escapeHtml(error.response?.data?.error || 'Risk classification could not be completed.')}</div>`; }
