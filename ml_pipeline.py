@@ -444,7 +444,13 @@ class MLPipeline:
     
     def _split_training_data(self, df: pd.DataFrame, test_size: float = 0.2) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """Split data chronologically (no random mixing)."""
-        split_idx = int(len(df) * (1 - test_size))
+        # Keep enough rows in the training partition for the smallest dataset
+        # accepted by the forecasting page.  With 12 rows, ``int(12 * .8)``
+        # gives only 9 training rows and the model is rejected even though the
+        # UI correctly says that 12 observations are enough.
+        minimum_test_rows = 2
+        split_idx = max(MIN_TRAINING_SAMPLES, int(np.ceil(len(df) * (1 - test_size))))
+        split_idx = min(split_idx, max(MIN_TRAINING_SAMPLES, len(df) - minimum_test_rows))
         train_df = df.iloc[:split_idx].copy()
         test_df = df.iloc[split_idx:].copy()
         return train_df, test_df
