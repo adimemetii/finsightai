@@ -14,6 +14,8 @@ services:
         sync: false
       - key: GROQ_MODEL
         value: openai/gpt-oss-120b
+      - key: GROQ_FALLBACK_MODEL
+        value: openai/gpt-oss-20b
       - key: GROQ_TIMEOUT
         value: "45"
       - key: DB_HOST

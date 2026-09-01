@@ -220,6 +220,7 @@ ALLOWED_EXTENSIONS = {
 MAX_DATA_COLUMNS = _int_env("MAX_DATA_COLUMNS", 200)
 GROQ_API_KEY = _env("GROQ_API_KEY")
 GROQ_DEFAULT_MODEL = "openai/gpt-oss-120b"
+GROQ_FALLBACK_MODEL = _env("GROQ_FALLBACK_MODEL", "openai/gpt-oss-20b")
 GROQ_MODEL = _env("GROQ_MODEL") or GROQ_DEFAULT_MODEL
 GROQ_TIMEOUT = max(10, min(120, _int_env("GROQ_TIMEOUT", 45)))
 
@@ -736,12 +737,16 @@ def _groq_answer(messages: list[dict[str, str]]) -> str:
     model = os.environ.get("GROQ_MODEL", "").strip() or GROQ_MODEL
     if not api_key:
         raise RuntimeError("The AI assistant is not configured on this deployment.")
-    # A stale Render GROQ_MODEL should not take the whole assistant offline.
-    # Try the configured model first, then retry once with the known-good
-    # project default only when Groq identifies the model as invalid.
-    models = [model]
-    if model != GROQ_DEFAULT_MODEL:
-        models.append(GROQ_DEFAULT_MODEL)
+    # A stale or project-restricted Render GROQ_MODEL should not take the
+    # whole assistant offline. Try the configured model first, then the
+    # current default and a smaller supported model. The fallback is only
+    # used when Groq rejects the selected model, so a permitted 120B model
+    # remains the normal path.
+    models = []
+    for candidate in (model, GROQ_DEFAULT_MODEL, GROQ_FALLBACK_MODEL):
+        candidate = str(candidate or "").strip()
+        if candidate and candidate not in models:
+            models.append(candidate)
     body = None
     for attempt, request_model in enumerate(models):
         payload = json.dumps({
@@ -769,11 +774,13 @@ def _groq_answer(messages: list[dict[str, str]]) -> str:
             # quota, authentication, etc.), but never log request headers or
             # the API key. Keep the browser-facing response safe.
             detail = ""
+            provider_code = ""
             try:
                 error_body = json.loads(exc.read().decode("utf-8"))
                 error_value = error_body.get("error") if isinstance(error_body, dict) else None
                 if isinstance(error_value, dict):
                     detail = str(error_value.get("message") or "")
+                    provider_code = str(error_value.get("code") or "")
                 elif error_value:
                     detail = str(error_value)
             except (OSError, ValueError, TypeError):
@@ -781,15 +788,27 @@ def _groq_answer(messages: list[dict[str, str]]) -> str:
             detail = re.sub(r"(?i)bearer\s+[A-Za-z0-9._-]+", "bearer [redacted]", detail)
             detail = re.sub(r"(?i)gsk_[A-Za-z0-9_-]+", "[redacted]", detail)
             app.logger.warning(
-                "Groq request returned HTTP %s for model %s: %s",
-                exc.code, request_model, detail[:500] or "no provider detail",
+                "Groq request returned HTTP %s for model %s (provider code %s): %s",
+                exc.code, request_model, provider_code or "unknown",
+                detail[:500] or "no provider detail",
             )
             model_error = bool(re.search(
                 r"(?i)(?:invalid|unknown|unsupported|not found|does not exist).{0,40}\bmodel\b"
                 r"|\bmodel\b.{0,40}(?:invalid|unknown|unsupported|not found|does not exist)",
                 detail,
             ))
-            if exc.code in (400, 404) and model_error and attempt + 1 < len(models):
+            # Groq returns 403 when a project/org model policy rejects the
+            # selected model. Some responses contain no JSON body (as seen
+            # in production), so treat a body-less 403 as a model permission
+            # failure and try the next supported model as well.
+            permission_error = exc.code == 403 and (
+                provider_code.startswith("model_permission_")
+                or bool(re.search(r"(?i)permission|blocked|restricted|model", detail))
+                or not detail
+            )
+            if (
+                (exc.code in (400, 404) and model_error) or permission_error
+            ) and attempt + 1 < len(models):
                 app.logger.warning("Retrying Groq request with fallback model %s", models[attempt + 1])
                 continue
             if exc.code == 401:
