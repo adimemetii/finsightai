@@ -1202,11 +1202,17 @@ def signup():
             flash("The users table is missing its email or password field.", "danger")
             return render_template("signup.html"), 503
 
-        # Check whether the email is already used.
-        existing = run_query(
-            f"SELECT id FROM users WHERE {_quote_identifier(email_column)} = %s",
-            (email,), fetchone=True,
-        )
+        # Check whether the email is already used. Keep connection failures in
+        # the signup flow so users receive a useful message instead of a 500.
+        try:
+            existing = run_query(
+                f"SELECT id FROM users WHERE {_quote_identifier(email_column)} = %s",
+                (email,), fetchone=True,
+            )
+        except Exception as exc:
+            app.logger.error("Signup email lookup failed: %s", exc, exc_info=True)
+            flash("The database is currently unavailable. Please try again in a moment.", "danger")
+            return render_template("signup.html"), 503
         if existing and existing["row"]:
             flash("This email is already registered. Please log in.", "warning")
             return redirect(url_for("login"))
@@ -1262,27 +1268,22 @@ def signup():
             )
             user_id = cur.lastrowid
             conn.commit()
-
-            _powerbi_resource(user_id)
-
-            add_history(user_id, company_id, "signup", f"New account created for {company_name}")
-
-            session["user_id"] = user_id
-            session["user_name"] = name
-            session["company_id"] = company_id
-            session["company_name"] = company_name
-            flash(f"Welcome to FinSight AI, {name}!", "success")
-            return redirect(url_for("dashboard"))
-        except (mysql.connector.Error, RuntimeError) as exc:
+        except Exception as exc:
             if conn is not None:
                 try:
                     conn.rollback()
-                except mysql.connector.Error:
+                except Exception:
                     pass
             app.logger.error("Signup failed: %s", exc, exc_info=True)
-            if getattr(exc, "errno", None) == errorcode.ER_ACCESS_DENIED_ERROR:
+            if isinstance(exc, mysql.connector.Error) and getattr(exc, "errno", None) == errorcode.ER_ACCESS_DENIED_ERROR:
                 flash("Cannot connect to MySQL: access denied. "
                       "Check DB_USER and DB_PASSWORD in your environment configuration.", "danger")
+            elif isinstance(exc, mysql.connector.Error) and getattr(exc, "errno", None) == errorcode.ER_DUP_ENTRY:
+                flash("This email is already registered. Please log in.", "warning")
+            elif isinstance(exc, RuntimeError):
+                flash("The database schema is missing a required account field. Please contact the administrator.", "danger")
+            elif isinstance(exc, mysql.connector.Error):
+                flash("The database is currently unavailable or could not save your account. Please try again in a moment.", "danger")
             else:
                 flash("We could not create your account right now. Please try again.", "danger")
             return render_template("signup.html")
@@ -1291,6 +1292,25 @@ def signup():
                 cur.close()
             if conn is not None:
                 conn.close()
+
+        # Account creation is already committed at this point. These are
+        # optional conveniences and must not turn a successful signup into a
+        # false failure when a legacy database is missing one of their tables.
+        try:
+            _powerbi_resource(user_id)
+        except Exception as exc:
+            app.logger.warning("Signup Power BI resource setup skipped: %s", exc)
+        try:
+            add_history(user_id, company_id, "signup", f"New account created for {company_name}")
+        except Exception as exc:
+            app.logger.warning("Signup history entry skipped: %s", exc)
+
+        session["user_id"] = user_id
+        session["user_name"] = name
+        session["company_id"] = company_id
+        session["company_name"] = company_name
+        flash(f"Welcome to FinSight AI, {name}!", "success")
+        return redirect(url_for("dashboard"))
 
     return render_template("signup.html")
 
