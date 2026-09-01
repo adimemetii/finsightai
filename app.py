@@ -729,19 +729,23 @@ def _chat_data_context(user_id: int) -> str:
 
 def _groq_answer(messages: list[dict[str, str]]) -> str:
     """Call Groq's OpenAI-compatible endpoint without exposing the API key."""
-    if not GROQ_API_KEY:
+    # Read deployment configuration at request time so a Render restart or
+    # environment refresh is reflected without exposing credentials to the UI.
+    api_key = os.environ.get("GROQ_API_KEY", "").strip()
+    model = os.environ.get("GROQ_MODEL", "").strip() or GROQ_MODEL
+    if not api_key:
         raise RuntimeError("The AI assistant is not configured on this deployment.")
     payload = json.dumps({
-        "model": GROQ_MODEL,
+        "model": model,
         "messages": messages,
         "temperature": 0.25,
-        "max_tokens": 700,
+        "max_completion_tokens": 700,
     }).encode("utf-8")
     request_obj = Request(
         "https://api.groq.com/openai/v1/chat/completions",
         data=payload,
         headers={
-            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
             "Accept": "application/json",
         },
@@ -751,7 +755,24 @@ def _groq_answer(messages: list[dict[str, str]]) -> str:
         with urlopen(request_obj, timeout=GROQ_TIMEOUT) as response:
             body = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
-        app.logger.warning("Groq request returned HTTP %s", exc.code)
+        # The provider's message is useful in Render logs (invalid model,
+        # quota, authentication, etc.), but never log the request headers or
+        # API key. Keep the browser-facing response intentionally generic.
+        detail = ""
+        try:
+            error_body = json.loads(exc.read().decode("utf-8"))
+            error_value = error_body.get("error") if isinstance(error_body, dict) else None
+            if isinstance(error_value, dict):
+                detail = str(error_value.get("message") or "")
+            elif error_value:
+                detail = str(error_value)
+        except (OSError, ValueError, TypeError):
+            pass
+        detail = re.sub(r"(?i)bearer\s+[A-Za-z0-9._-]+", "bearer [redacted]", detail)
+        app.logger.warning(
+            "Groq request returned HTTP %s for model %s: %s",
+            exc.code, model, detail[:500] or "no provider detail",
+        )
         if exc.code == 429:
             raise RuntimeError("The AI assistant is temporarily busy. Please try again in a moment.") from exc
         raise RuntimeError("The AI assistant could not complete that request.") from exc
@@ -1243,13 +1264,16 @@ def signup():
             if display_column:
                 insert_columns.append(display_column)
                 insert_values.append(name)
-            else:
-                if user_columns.get("first_name"):
-                    insert_columns.append(user_columns["first_name"])
-                    insert_values.append(first_name)
-                if user_columns.get("last_name"):
-                    insert_columns.append(user_columns["last_name"])
-                    insert_values.append(last_name)
+            # Some existing deployments contain both a legacy full-name
+            # column and required firstName/lastName columns. Populate every
+            # supported name field so the live schema's required fields are
+            # satisfied instead of relying on a default value.
+            if user_columns.get("first_name") and user_columns["first_name"] not in insert_columns:
+                insert_columns.append(user_columns["first_name"])
+                insert_values.append(first_name)
+            if user_columns.get("last_name") and user_columns["last_name"] not in insert_columns:
+                insert_columns.append(user_columns["last_name"])
+                insert_values.append(last_name)
             insert_columns.extend([email_column, password_column])
             insert_values.extend([email, generate_password_hash(password)])
             if user_columns.get("company_id"):

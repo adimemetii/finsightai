@@ -244,7 +244,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const addMessage = (role, content, temporary = false) => {
         const item = document.createElement('div');
         item.className = `chat-message ${role}${temporary ? ' chat-thinking' : ''}`;
-        item.textContent = content;
+        if (role.includes('error')) {
+            const text = document.createElement('span');
+            text.className = 'chat-error-text';
+            text.textContent = content;
+            const dismiss = document.createElement('button');
+            dismiss.type = 'button';
+            dismiss.className = 'chat-error-close';
+            dismiss.setAttribute('aria-label', shell.dataset.errorClose || 'Close');
+            dismiss.title = shell.dataset.errorClose || 'Close';
+            dismiss.innerHTML = '<i class="fas fa-xmark" aria-hidden="true"></i>';
+            dismiss.addEventListener('click', () => item.remove());
+            item.append(text, dismiss);
+        } else {
+            item.textContent = content;
+        }
         messages.appendChild(item);
         messages.scrollTop = messages.scrollHeight;
         return item;

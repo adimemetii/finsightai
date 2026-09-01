@@ -40,7 +40,7 @@
         <div class="page-body"><div class="container-xl">{% with messages = get_flashed_messages(with_categories=true) %}{% for category, msg in messages %}<div class="alert alert-{{ category }} alert-dismissible mt-3" role="alert">{{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endfor %}{% endwith %}{% block content %}{% endblock %}</div></div>
         <footer class="app-footer"><div class="container-xl"><span>{{ t('footer.copyright') }}</span><span>{{ t('footer.tagline') }}</span></div></footer>
 {% if session.user_id %}
-        <section class="finsight-chat" id="finsightChat" data-chat-url="{{ url_for('chat') }}" data-reset-url="{{ url_for('reset_chat') }}" data-thinking="{{ t('chat.thinking') }}" data-error="{{ t('chat.error') }}" data-welcome="{{ t('chat.welcome') }}" aria-label="{{ t('chat.title') }}">
+        <section class="finsight-chat" id="finsightChat" data-chat-url="{{ url_for('chat') }}" data-reset-url="{{ url_for('reset_chat') }}" data-thinking="{{ t('chat.thinking') }}" data-error="{{ t('chat.error') }}" data-error-close="{{ t('chat.close') }}" data-welcome="{{ t('chat.welcome') }}" aria-label="{{ t('chat.title') }}">
             <button class="btn btn-primary finsight-chat-toggle" id="chatToggle" type="button" aria-controls="chatWindow" aria-expanded="false" title="{{ t('chat.open') }}"><i class="fas fa-comments me-2"></i><span>{{ t('chat.title') }}</span></button>
             <div class="finsight-chat-window card d-none" id="chatWindow" role="dialog" aria-modal="false" aria-labelledby="chatTitle">
                 <div class="finsight-chat-header">
