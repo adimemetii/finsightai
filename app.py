@@ -219,8 +219,8 @@ ALLOWED_EXTENSIONS = {
 } | {"csv", "xlsx", "xls", "json"}
 MAX_DATA_COLUMNS = _int_env("MAX_DATA_COLUMNS", 200)
 GROQ_API_KEY = _env("GROQ_API_KEY")
-GROQ_DEFAULT_MODEL = "openai/gpt-oss-120b"
-GROQ_FALLBACK_MODEL = _env("GROQ_FALLBACK_MODEL", "openai/gpt-oss-20b")
+GROQ_DEFAULT_MODEL = "qwen/qwen3.6-27b"
+GROQ_FALLBACK_MODEL = _env("GROQ_FALLBACK_MODEL", "qwen/qwen3.8-27b")
 GROQ_MODEL = _env("GROQ_MODEL") or GROQ_DEFAULT_MODEL
 GROQ_TIMEOUT = max(10, min(120, _int_env("GROQ_TIMEOUT", 45)))
 
@@ -739,9 +739,8 @@ def _groq_answer(messages: list[dict[str, str]]) -> str:
         raise RuntimeError("The AI assistant is not configured on this deployment.")
     # A stale or project-restricted Render GROQ_MODEL should not take the
     # whole assistant offline. Try the configured model first, then the
-    # current default and a smaller supported model. The fallback is only
-    # used when Groq rejects the selected model, so a permitted 120B model
-    # remains the normal path.
+    # current default and a second current supported model. The fallback is
+    # only used when Groq rejects the selected model.
     models = []
     for candidate in (model, GROQ_DEFAULT_MODEL, GROQ_FALLBACK_MODEL):
         candidate = str(candidate or "").strip()

@@ -129,7 +129,7 @@ SECRET_KEY=change-me
 
 # Groq backend assistant (never expose this in frontend code)
 GROQ_API_KEY=
-GROQ_MODEL=openai/gpt-oss-120b
+GROQ_MODEL=qwen/qwen3.6-27b
 GROQ_TIMEOUT=45
 
 DB_HOST=localhost

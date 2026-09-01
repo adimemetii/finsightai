@@ -13,9 +13,9 @@ services:
       - key: GROQ_API_KEY
         sync: false
       - key: GROQ_MODEL
-        value: openai/gpt-oss-120b
+        value: qwen/qwen3.6-27b
       - key: GROQ_FALLBACK_MODEL
-        value: openai/gpt-oss-20b
+        value: qwen/qwen3.8-27b
       - key: GROQ_TIMEOUT
         value: "45"
       - key: DB_HOST
