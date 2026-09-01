@@ -24,7 +24,7 @@ FIELD_SPECS: dict[str, dict[str, Any]] = {
         "priority": "required",
         "aliases": [
             "date", "transaction_date", "sale_date", "invoice_date",
-            "order_date", "created_at", "created_date", "timestamp", "period",
+            "order_date", "created_at", "created_date", "timestamp", "time", "period",
         ],
     },
     "revenue": {
@@ -181,11 +181,40 @@ def _date_ratio(series: pd.Series) -> float:
     sample = sample[sample != ""]
     if len(sample) < 2:
         return 0.0
-    try:
-        parsed = pd.to_datetime(sample, errors="coerce", format="mixed")
-    except (TypeError, ValueError):
-        return 0.0
+    parsed = _parse_dates(sample)
     return float(parsed.notna().mean())
+
+
+def _parse_dates(series: pd.Series) -> pd.Series:
+    """Parse text, timestamps, and common Excel serial dates safely."""
+    if series is None:
+        return pd.Series(dtype="datetime64[ns]")
+    result = pd.Series(pd.NaT, index=series.index, dtype="datetime64[ns]")
+    numeric = pd.to_numeric(series, errors="coerce")
+    # Excel's 1900 date system is represented by serial days. Avoid
+    # interpreting ordinary amounts as dates by requiring a date-like range.
+    excel_mask = numeric.between(2000, 100000, inclusive="both")
+    if excel_mask.any():
+        result.loc[excel_mask] = pd.to_datetime(
+            numeric.loc[excel_mask], unit="D", origin="1899-12-30", errors="coerce"
+        )
+    text = series.astype("string").str.strip()
+    ymd_mask = text.str.fullmatch(r"\d{8}", na=False)
+    if ymd_mask.any():
+        result.loc[ymd_mask] = pd.to_datetime(
+            text.loc[ymd_mask], format="%Y%m%d", errors="coerce"
+        )
+    remaining = result.isna() & ~excel_mask & ~ymd_mask
+    if remaining.any():
+        try:
+            result.loc[remaining] = pd.to_datetime(
+                series.loc[remaining], errors="coerce", format="mixed"
+            )
+        except (TypeError, ValueError):
+            result.loc[remaining] = pd.to_datetime(
+                series.loc[remaining], errors="coerce"
+            )
+    return result
 
 
 def _value_type(series: pd.Series) -> str:
@@ -245,14 +274,14 @@ def detect_columns(df: pd.DataFrame) -> dict[str, Any]:
     candidates_by_field: dict[str, list[dict[str, Any]]] = {}
     for field, spec in FIELD_SPECS.items():
         candidates: list[dict[str, Any]] = []
-        for info in column_info:
+        for column_index, info in enumerate(column_info):
             score = _alias_score(info["normalized"], spec["aliases"])
             if spec["kind"] == "date":
-                score += 22.0 * _date_ratio(df.iloc[:, column_info.index(info)])
+                score += 22.0 * _date_ratio(df.iloc[:, column_index])
                 if info["type"] == "numeric":
                     score -= 20.0
             elif spec["kind"] == "numeric":
-                score += 22.0 * _numeric_ratio(df.iloc[:, column_info.index(info)])
+                score += 22.0 * _numeric_ratio(df.iloc[:, column_index])
                 if info["type"] == "date":
                     score -= 40.0
             elif spec["kind"] == "categorical" and info["type"] in {"categorical", "text"}:
@@ -358,17 +387,25 @@ def _numeric_series(series: pd.Series) -> pd.Series:
     if series is None:
         return pd.Series(dtype=float)
     text = series.astype("string").str.strip()
-    # Support common currency symbols and accounting negatives without adding
-    # a locale-specific parser dependency.
+    # Support common currency symbols, whitespace, thousands separators, and
+    # accounting negatives without imposing one locale on all uploads.
     negative = text.str.startswith("(") & text.str.endswith(")")
-    text = text.str.replace(r"[$€£¥]", "", regex=True)
+    text = text.str.replace(r"[$€£¥₹]", "", regex=True)
     text = text.str.replace(r"\s+", "", regex=True)
-    european = text.str.match(r"^-?\d{1,3}(?:\.\d{3})+,\d+$", na=False)
+    text = text.str.replace("(", "", regex=False).str.replace(")", "", regex=False)
+
+    both = text.str.contains(",", na=False) & text.str.contains(".", regex=False, na=False)
+    last_comma = text.str.rfind(",")
+    last_dot = text.str.rfind(".")
+    european = both & (last_comma > last_dot)
     text.loc[european] = (
         text.loc[european].str.replace(".", "", regex=False)
         .str.replace(",", ".", regex=False)
     )
-    text = text.str.replace(",", "", regex=False).str.replace("(", "", regex=False).str.replace(")", "", regex=False)
+    remaining_comma = text.str.contains(",", na=False)
+    comma_decimal = remaining_comma & text.str.match(r"^-?\d+,\d{1,2}$", na=False)
+    text.loc[remaining_comma & ~comma_decimal] = text.loc[remaining_comma & ~comma_decimal].str.replace(",", "", regex=False)
+    text.loc[comma_decimal] = text.loc[comma_decimal].str.replace(",", ".", regex=False)
     values = pd.to_numeric(text, errors="coerce")
     return values.where(~negative, -values.abs())
 
@@ -380,6 +417,22 @@ def clean_dataframe(df: pd.DataFrame, mapping: dict[str, str] | None = None) -> 
 
     original_rows = int(len(df))
     work = apply_mapping(df, mapping)
+    # Excel often carries a synthetic index as ``Unnamed: 0``. Remove only
+    # clearly synthetic columns; a real business index is preserved unless it
+    # is exactly the default 0..n-1 sequence.
+    synthetic = []
+    for column in work.columns:
+        normalized = str(column).casefold()
+        values = work[column]
+        if normalized.startswith("unnamed_") or normalized in {"__index_level_0__", "level_0"}:
+            synthetic.append(column)
+        elif normalized in {"index", "row_number"}:
+            numeric = pd.to_numeric(values, errors="coerce")
+            expected = pd.Series(range(len(values)), index=numeric.index, dtype="float64")
+            if numeric.notna().all() and numeric.astype("float64").equals(expected):
+                synthetic.append(column)
+    if synthetic:
+        work = work.drop(columns=synthetic)
     # Treat whitespace-only cells as empty before removing blank rows/columns.
     # This is especially important for Excel exports with formatting beyond
     # the actual data range.
@@ -406,7 +459,7 @@ def clean_dataframe(df: pd.DataFrame, mapping: dict[str, str] | None = None) -> 
     if "tx_date" in work.columns:
         raw_date = work["tx_date"]
         non_empty = raw_date.notna() & raw_date.astype("string").str.strip().ne("")
-        parsed = pd.to_datetime(raw_date, errors="coerce", format="mixed")
+        parsed = _parse_dates(raw_date)
         invalid_dates = int((non_empty & parsed.isna()).sum())
         work["tx_date"] = parsed
 
@@ -425,7 +478,12 @@ def clean_dataframe(df: pd.DataFrame, mapping: dict[str, str] | None = None) -> 
     # Compare normalized values so formatting differences such as "$1,200"
     # versus "1200" do not allow duplicate business rows through.
     before_duplicates = int(len(work))
-    work = work.drop_duplicates().copy()
+    try:
+        work = work.drop_duplicates().copy()
+    except TypeError:
+        # Nested JSON/list values are uncommon but valid; compare their
+        # stable string representation when pandas cannot hash them.
+        work = work.loc[~work.astype("string").duplicated()].copy()
     duplicates_removed = before_duplicates - int(len(work))
 
     missing_values = int(work.isna().sum().sum())

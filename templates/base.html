@@ -39,6 +39,23 @@
 {% endif %}
         <div class="page-body"><div class="container-xl">{% with messages = get_flashed_messages(with_categories=true) %}{% for category, msg in messages %}<div class="alert alert-{{ category }} alert-dismissible mt-3" role="alert">{{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endfor %}{% endwith %}{% block content %}{% endblock %}</div></div>
         <footer class="app-footer"><div class="container-xl"><span>{{ t('footer.copyright') }}</span><span>{{ t('footer.tagline') }}</span></div></footer>
+{% if session.user_id %}
+        <section class="finsight-chat" id="finsightChat" data-chat-url="{{ url_for('chat') }}" data-reset-url="{{ url_for('reset_chat') }}" data-thinking="{{ t('chat.thinking') }}" data-error="{{ t('chat.error') }}" data-welcome="{{ t('chat.welcome') }}" aria-label="{{ t('chat.title') }}">
+            <button class="btn btn-primary finsight-chat-toggle" id="chatToggle" type="button" aria-controls="chatWindow" aria-expanded="false" title="{{ t('chat.open') }}"><i class="fas fa-comments me-2"></i><span>{{ t('chat.title') }}</span></button>
+            <div class="finsight-chat-window card d-none" id="chatWindow" role="dialog" aria-modal="false" aria-labelledby="chatTitle">
+                <div class="finsight-chat-header">
+                    <div><h2 class="h5 mb-0" id="chatTitle"><i class="fas fa-sparkles text-primary me-2"></i>{{ t('chat.title') }}</h2><small class="text-muted">{{ t('chat.subtitle') }}</small></div>
+                    <button class="btn btn-sm btn-ghost-secondary btn-icon" id="chatClose" type="button" aria-label="{{ t('chat.close') }}" title="{{ t('chat.close') }}"><i class="fas fa-xmark"></i></button>
+                </div>
+                <div class="finsight-chat-messages" id="chatMessages" aria-live="polite"><div class="chat-message assistant">{{ t('chat.welcome') }}</div></div>
+                <div class="finsight-chat-suggestions" id="chatSuggestions" aria-label="{{ t('chat.title') }}">
+                    {% for key in ['overview', 'trends', 'forecast', 'improve', 'expenses'] %}<button type="button" class="btn btn-sm btn-outline-secondary chat-suggestion" data-question="{{ t('chat.suggestion.' ~ key) }}">{{ t('chat.suggestion.' ~ key) }}</button>{% endfor %}
+                </div>
+                <form class="finsight-chat-form" id="chatForm"><textarea class="form-control" id="chatInput" rows="1" maxlength="2000" placeholder="{{ t('chat.input') }}" aria-label="{{ t('chat.input') }}" required></textarea><button class="btn btn-primary" id="chatSend" type="submit"><i class="fas fa-paper-plane me-1"></i>{{ t('chat.send') }}</button></form>
+                <button type="button" class="btn btn-link btn-sm text-muted finsight-chat-clear" id="chatClear">{{ t('chat.clear') }}</button>
+            </div>
+        </section>
+{% endif %}
 {% if session.user_id %}</div></div>{% else %}</div>{% endif %}
 <script src="https://cdn.jsdelivr.net/npm/@tabler/core@1.4.0/dist/js/tabler.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>

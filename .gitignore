@@ -2,3 +2,11 @@
 __pycache__/
 *.pyc
 .venv/
+
+# Local uploads and raw business data must not be committed.
+uploads/*
+users/*
+companies-data/*
+*.csv
+*.xlsx
+*.xls

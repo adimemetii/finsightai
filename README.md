@@ -2,7 +2,7 @@
 
 A multi-tenant Flask + MySQL web application for cleaning,
 analysing, and forecasting financial data with company-based
-data isolation and a per-company Power BI dashboard link.
+data isolation, a data-aware Groq assistant, and Power BI-ready exports.
 
 ---
 
@@ -45,6 +45,9 @@ On PowerShell use `run.ps1` instead of `run.bat`.
   recent uploads, recent predictions, quick action buttons.
 - 🔮 **Forecasting** - available financial targets with historical context,
   configurable horizons, model information, and persisted forecast points.
+- 💬 **Groq AI assistant** - an authenticated conversational assistant that
+  uses compact, user-scoped financial summaries and follows the existing
+  navbar language selector.
 - 🕓 **Dashboard history** - every upload, prediction and signup is
   logged in `dashboard_history` and visible in the Database page.
 - 📈 **Power BI Desktop integration** - each uploaded dataset gets its own
@@ -59,7 +62,9 @@ On PowerShell use `run.ps1` instead of `run.bat`.
 
 ```
 FinSight AI/
-├── app.py                  # Flask application (auth, upload, predict, history, Power BI)
+├── app.py                  # Flask application, auth, upload, forecast, chat, Power BI
+├── data_mapping.py         # Alias detection, date/number parsing, cleaning
+├── ml_pipeline.py          # Time-aware model training and persistence
 ├── init_db.py              # Creates database + tables + views from zero
 ├── requirements.txt
 ├── .env                    # Local environment (auto-created by run.bat)
@@ -122,6 +127,11 @@ FLASK_DEBUG=True
 FLASK_APP=app.py
 SECRET_KEY=change-me
 
+# Groq backend assistant (never expose this in frontend code)
+GROQ_API_KEY=
+GROQ_MODEL=openai/gpt-oss-120b
+GROQ_TIMEOUT=45
+
 DB_HOST=localhost
 DB_PORT=3306
 DB_USER=root
@@ -139,13 +149,18 @@ POWERBI_TEMPLATE=finsightai.pbix
 
 The application uses the `DB_*` names above. Existing local installations
 using the legacy `MYSQL_*` names remain supported as a compatibility fallback.
+`GROQ_API_KEY` is required only for live chatbot answers; without it, the
+application remains usable and the chat UI returns a clear configuration
+message. The API key is read only by Flask and is never sent to the browser.
 
 ---
 
 ## Power BI Desktop
 
-The app generates user-owned CSV sources, analytics tables, an Excel
-data export, and a copy of the reusable `finsightai.pbix` template.
+The app generates user-owned UTF-8 CSV sources, analytics tables, an Excel
+data export, and a copy of the reusable `finsightai.pbix` template. Exports
+remove synthetic index/processing columns, normalize dates, convert financial
+fields to numeric values, and preserve the cleaned business rows.
 Open the **Power BI Desktop** page, click **Generate / Refresh Power BI**,
 then download the Power BI file and open it in Power BI Desktop. Refresh
 the local data sources when prompted. No online account or URL is required.
@@ -159,6 +174,32 @@ pages must be authored in the template.
 See [powerbi_setup.md](powerbi_setup.md) for the Desktop workflow.
 
 ---
+
+## AI chatbot
+
+The authenticated chat endpoint is `POST /api/chat`. The browser sends only a
+question and CSRF token to Flask; Flask calls Groq's OpenAI-compatible API with
+the configured model. Conversation history is bounded and kept per user in the
+current worker process. The prompt contains aggregate KPIs, date range, small
+category rankings, trends, and recent predictions—not the full upload.
+
+The selected navbar locale is included in the prompt, so answers are requested
+in Shqip, English, Deutsch, or Chinese. The chatbot is an analytical assistant
+and does not provide regulated financial advice.
+
+## Forecasting and data processing
+
+Uploads accept CSV, XLSX, XLS, and JSON. Common date aliases include Date,
+Transaction Date, Created Date, Timestamp, and Time. Financial aliases include
+Revenue, Sales, Sales Amount, Income, Expenses, Cost, Profit, and Amount.
+The cleaner handles semicolon CSVs, Excel serial dates, timestamps, currency
+symbols, comma-formatted numbers, accounting negatives, blank rows/columns,
+synthetic Excel indexes, missing values, and exact duplicate rows.
+
+Forecasting requires 12 valid dated numeric observations because the current
+time-aware train/test and validation pipeline needs a training partition and a
+test partition. Fewer observations, invalid dates, or no date column produce a
+specific warning while the dashboard and analytics remain usable.
 
 ## Tests you should run after setup
 
@@ -191,7 +232,20 @@ Marketing Spend are optional. Non-standard columns are retained in the
 database-backed `dataset_rows` JSON store, while standard financial fields stay
 available through the existing `financial_data` compatibility table.
 
-The repository also includes `render.yaml`, which installs the pinned
-requirements, runs `init_db.py`, starts Gunicorn, and checks `/healthz`. Set
-`DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, and `DB_SSL_CA` as
-Render environment variables; existing `MYSQL_*` names remain supported.
+The repository also includes `render.yaml`, which installs the requirements,
+starts Gunicorn on Render's `$PORT`, and checks `/healthz`. The Flask module
+initializes/upgrades the MySQL schema when the production process starts. Set
+`DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_SSL_CA`, and
+`GROQ_API_KEY` as Render environment variables; `GROQ_MODEL` is optional.
+
+## Troubleshooting
+
+- **Database connection failed:** verify the Aiven host, port, database name,
+  credentials, and CA certificate. Aiven TLS verification is enabled.
+- **Chat is not configured:** add `GROQ_API_KEY` in Render or the local `.env`.
+  Never place it in HTML, JavaScript, Git, or a README.
+- **Forecast unavailable:** inspect the upload warning for the valid dated
+  observation count, invalid-date count, or missing date-column explanation.
+- **Power BI source missing after a Render redeploy:** Render's default local
+  filesystem is ephemeral. Regenerate the private Power BI resources after
+  deployment; cleaned rows remain in MySQL and can be rebuilt.

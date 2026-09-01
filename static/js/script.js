@@ -223,3 +223,84 @@ const Debug = {
 
 // Enable debug mode for development
 window.DEBUG_MODE = false; // Set to true for debugging
+
+// =====================================================
+// FIN SIGHT AI ASSISTANT
+// =====================================================
+document.addEventListener('DOMContentLoaded', () => {
+    const shell = document.getElementById('finsightChat');
+    if (!shell) return;
+    const toggle = document.getElementById('chatToggle');
+    const close = document.getElementById('chatClose');
+    const windowEl = document.getElementById('chatWindow');
+    const messages = document.getElementById('chatMessages');
+    const form = document.getElementById('chatForm');
+    const input = document.getElementById('chatInput');
+    const send = document.getElementById('chatSend');
+    const clear = document.getElementById('chatClear');
+    const suggestions = document.querySelectorAll('.chat-suggestion');
+    const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+    const addMessage = (role, content, temporary = false) => {
+        const item = document.createElement('div');
+        item.className = `chat-message ${role}${temporary ? ' chat-thinking' : ''}`;
+        item.textContent = content;
+        messages.appendChild(item);
+        messages.scrollTop = messages.scrollHeight;
+        return item;
+    };
+    const setOpen = open => {
+        windowEl.classList.toggle('d-none', !open);
+        toggle.setAttribute('aria-expanded', String(open));
+        if (open) input.focus();
+    };
+    toggle.addEventListener('click', () => setOpen(windowEl.classList.contains('d-none')));
+    close.addEventListener('click', () => setOpen(false));
+    suggestions.forEach(button => button.addEventListener('click', () => {
+        input.value = button.dataset.question || button.textContent.trim();
+        form.requestSubmit();
+    }));
+    input.addEventListener('keydown', event => {
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            form.requestSubmit();
+        }
+    });
+    form.addEventListener('submit', async event => {
+        event.preventDefault();
+        const question = input.value.trim();
+        if (!question || send.disabled) return;
+        addMessage('user', question);
+        input.value = '';
+        send.disabled = true;
+        suggestions.forEach(button => { button.disabled = true; });
+        const thinking = addMessage('assistant', shell.dataset.thinking || 'Analyzing...', true);
+        try {
+            const response = await fetch(shell.dataset.chatUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': token },
+                body: JSON.stringify({ message: question })
+            });
+            const data = await response.json().catch(() => ({}));
+            thinking.remove();
+            if (!response.ok) throw new Error(data.error || shell.dataset.error || 'The assistant could not answer.');
+            addMessage('assistant', data.message || shell.dataset.error || 'The assistant returned no answer.');
+        } catch (error) {
+            thinking.remove();
+            addMessage('assistant error', error.message || shell.dataset.error || 'The assistant could not answer.');
+        } finally {
+            send.disabled = false;
+            suggestions.forEach(button => { button.disabled = false; });
+            input.focus();
+        }
+    });
+    clear.addEventListener('click', async () => {
+        try {
+            await fetch(shell.dataset.resetUrl, { method: 'POST', headers: { 'X-CSRFToken': token } });
+        } catch (error) {
+            Debug.log('Could not reset assistant context', error);
+        }
+        messages.innerHTML = '';
+        addMessage('assistant', shell.dataset.welcome || document.querySelector('[data-chat-welcome]')?.textContent || '');
+    });
+});

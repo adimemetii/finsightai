@@ -10,6 +10,12 @@ services:
     envVars:
       - key: SECRET_KEY
         generateValue: true
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: GROQ_TIMEOUT
+        value: "45"
       - key: DB_HOST
         sync: false
       - key: DB_PORT

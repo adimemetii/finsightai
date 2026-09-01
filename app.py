@@ -25,6 +25,8 @@ from datetime import datetime, date, timedelta
 from functools import wraps
 from pathlib import Path
 from email.utils import parseaddr
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 # Load local development variables without overriding deployment variables.
 try:
@@ -48,9 +50,18 @@ from flask import (
     Flask, render_template, request, jsonify, redirect, url_for,
     session, flash, send_file,
 )
-from sklearn.linear_model import LinearRegression
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_absolute_error, r2_score
+try:
+    from sklearn.linear_model import LinearRegression
+    from sklearn.model_selection import train_test_split
+    from sklearn.metrics import mean_absolute_error, r2_score
+except ImportError as exc:
+    # Keep health checks, authentication, uploads, analytics, and chat
+    # available if an optional native ML wheel is unavailable on a host.
+    print(f"[finsight] Warning: ML dependencies unavailable: {type(exc).__name__}")
+    LinearRegression = None
+    train_test_split = None
+    mean_absolute_error = None
+    r2_score = None
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 
@@ -207,6 +218,9 @@ ALLOWED_EXTENSIONS = {
     e.lower() for e in _env("ALLOWED_EXTENSIONS", "csv,xlsx,xls,json").split(",") if e
 } | {"csv", "xlsx", "xls", "json"}
 MAX_DATA_COLUMNS = _int_env("MAX_DATA_COLUMNS", 200)
+GROQ_API_KEY = _env("GROQ_API_KEY")
+GROQ_MODEL = _env("GROQ_MODEL") or "openai/gpt-oss-120b"
+GROQ_TIMEOUT = max(10, min(120, _int_env("GROQ_TIMEOUT", 45)))
 
 
 
@@ -285,6 +299,7 @@ def get_db():
 def run_query(sql: str, params: tuple | list | None = None, *, fetchone=False, fetchall=False, commit=False):
     """Convenience helper for queries that don't need a long-lived cursor."""
     conn = get_db()
+    cur = None
     try:
         cur = conn.cursor(dictionary=True)
         cur.execute(sql, params or ())
@@ -296,9 +311,10 @@ def run_query(sql: str, params: tuple | list | None = None, *, fetchone=False, f
         if commit:
             conn.commit()
         last_id = cur.lastrowid
-        cur.close()
         return {"row": result, "rows": result if fetchall else None, "last_id": last_id}
     finally:
+        if cur is not None:
+            cur.close()
         conn.close()
 
 
@@ -608,6 +624,155 @@ def _analysis_context(user_id: int) -> dict | None:
 
 
 # =====================================================
+# Groq chat assistant
+# =====================================================
+def _chat_number(value: object) -> str:
+    try:
+        number = float(value)
+        if not np.isfinite(number):
+            return "n/a"
+        return f"{number:,.2f}"
+    except (TypeError, ValueError):
+        return "n/a"
+
+
+def _chat_data_context(user_id: int) -> str:
+    """Build a compact, user-scoped summary for the assistant.
+
+    Only aggregate values, a small category ranking, and recent model output
+    are sent to Groq. Raw uploads and credentials never leave this server.
+    """
+    try:
+        dataset_id, frame = _active_dataset_and_frame(user_id)
+    except Exception as exc:
+        app.logger.warning("Chat data context could not load the active dataset: %s", exc)
+        return "No uploaded dataset is currently available."
+    if dataset_id is None or frame is None or frame.empty:
+        return "No uploaded dataset is currently available."
+
+    working = frame.copy()
+    lines = [f"Active dataset: {len(working):,} cleaned rows."]
+    if "tx_date" in working.columns:
+        dates = pd.to_datetime(working["tx_date"], errors="coerce").dropna()
+        if not dates.empty:
+            lines.append(f"Date range: {dates.min().date()} to {dates.max().date()}.")
+    metrics = ("revenue", "expenses", "profit", "amount", "customers", "marketing_spend")
+    for metric in metrics:
+        if metric not in working.columns:
+            continue
+        values = pd.to_numeric(working[metric], errors="coerce").dropna()
+        if not values.empty:
+            lines.append(
+                f"{metric.replace('_', ' ').title()}: total {_chat_number(values.sum())}; "
+                f"average {_chat_number(values.mean())}."
+            )
+
+    value_column = next((column for column in ("revenue", "expenses", "profit", "amount")
+                         if column in working.columns), None)
+    category_column = next((column for column in ("category", "department", "city", "status")
+                            if column in working.columns), None)
+    if value_column and category_column:
+        grouped = working[[category_column, value_column]].copy()
+        grouped[value_column] = pd.to_numeric(grouped[value_column], errors="coerce")
+        grouped[category_column] = grouped[category_column].fillna("Unspecified").astype(str).str.strip()
+        grouped = grouped.dropna(subset=[value_column]).groupby(category_column)[value_column].sum()
+        if not grouped.empty:
+            top = grouped.sort_values(ascending=False).head(8)
+            ranking = ", ".join(f"{name}: {_chat_number(value)}" for name, value in top.items())
+            lines.append(f"Top {category_column.replace('_', ' ')} by {value_column}: {ranking}.")
+
+    analysis = _analysis_context(user_id) or {}
+    trends = analysis.get("trends") or []
+    if trends:
+        trend_text = "; ".join(
+            f"{item.get('metric', 'metric')} {item.get('direction', 'stable')}"
+            for item in trends[:6] if isinstance(item, dict)
+        )
+        if trend_text:
+            lines.append(f"Detected trends: {trend_text}.")
+
+    try:
+        predictions = run_query(
+            """SELECT prediction_type, prediction_date, predicted_value, model_name
+               FROM predictions WHERE user_id=%s AND uploaded_file_id=%s
+               ORDER BY prediction_id DESC LIMIT 8""",
+            (user_id, dataset_id), fetchall=True,
+        )["rows"] or []
+        if predictions:
+            forecast_text = "; ".join(
+                f"{row.get('prediction_type')} on {row.get('prediction_date')}: "
+                f"{_chat_number(row.get('predicted_value'))}"
+                for row in predictions
+            )
+            lines.append(f"Recent forecast results: {forecast_text}.")
+    except Exception as exc:
+        app.logger.warning("Chat forecast context unavailable: %s", exc)
+
+    try:
+        risk = run_query(
+            """SELECT risk_level, classification_date, explanation
+               FROM risk_classifications WHERE user_id=%s AND uploaded_file_id=%s
+               ORDER BY risk_id DESC LIMIT 1""",
+            (user_id, dataset_id), fetchone=True,
+        )["row"]
+        if risk:
+            explanation = str(risk.get("explanation") or "")[:300]
+            lines.append(
+                f"Latest risk classification: {risk.get('risk_level')} on "
+                f"{risk.get('classification_date')}; {explanation}"
+            )
+    except Exception as exc:
+        app.logger.warning("Chat risk context unavailable: %s", exc)
+
+    return "\n".join(lines)[:10000]
+
+
+def _groq_answer(messages: list[dict[str, str]]) -> str:
+    """Call Groq's OpenAI-compatible endpoint without exposing the API key."""
+    if not GROQ_API_KEY:
+        raise RuntimeError("The AI assistant is not configured on this deployment.")
+    payload = json.dumps({
+        "model": GROQ_MODEL,
+        "messages": messages,
+        "temperature": 0.25,
+        "max_tokens": 700,
+    }).encode("utf-8")
+    request_obj = Request(
+        "https://api.groq.com/openai/v1/chat/completions",
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(request_obj, timeout=GROQ_TIMEOUT) as response:
+            body = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        app.logger.warning("Groq request returned HTTP %s", exc.code)
+        if exc.code == 429:
+            raise RuntimeError("The AI assistant is temporarily busy. Please try again in a moment.") from exc
+        raise RuntimeError("The AI assistant could not complete that request.") from exc
+    except (URLError, TimeoutError) as exc:
+        app.logger.warning("Groq request failed: %s", type(exc).__name__)
+        raise RuntimeError("The AI assistant is temporarily unavailable. Please try again.") from exc
+    except (ValueError, OSError) as exc:
+        app.logger.warning("Groq response could not be read: %s", type(exc).__name__)
+        raise RuntimeError("The AI assistant returned an invalid response.") from exc
+
+    try:
+        content = body["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError) as exc:
+        app.logger.warning("Groq response did not contain assistant content")
+        raise RuntimeError("The AI assistant returned an empty response.") from exc
+    if not isinstance(content, str) or not content.strip():
+        raise RuntimeError("The AI assistant returned an empty response.")
+    return content.strip()[:12000]
+
+
+# =====================================================
 # Auth helpers / decorators
 # =====================================================
 def login_required(view):
@@ -618,6 +783,54 @@ def login_required(view):
             return redirect(url_for("login"))
         return view(*args, **kwargs)
     return wrapper
+
+
+@app.post("/api/chat")
+@login_required
+def chat():
+    """Answer a natural-language question with the current user's context."""
+    if not request.is_json:
+        return jsonify({"error": "JSON body required."}), 400
+    payload = request.get_json(silent=True) or {}
+    message = str(payload.get("message") or "").strip()
+    if not message:
+        return jsonify({"error": "Enter a question for the AI assistant."}), 400
+    if len(message) > 2000:
+        return jsonify({"error": "Please keep your question under 2,000 characters."}), 400
+
+    user_id = _session_user_id()
+    locale = i18n.get_locale() if i18n is not None else "en"
+    locale_names = getattr(i18n, "LOCALE_NAMES", {}) if i18n is not None else {}
+    language = locale_names.get(locale, locale)
+    system = (
+        "You are FinSight AI, a concise and practical financial data-analysis assistant. "
+        f"Answer in {language} ({locale}) because that is the user's selected language. "
+        "Use the supplied dataset summary when present. Explain calculations plainly, "
+        "state when information is unavailable, and do not invent figures, forecasts, "
+        "or business facts. This is analytical guidance, not regulated financial advice. "
+        "Keep answers helpful and readable with short paragraphs or bullets.\n\n"
+        "DATA CONTEXT:\n" + _chat_data_context(user_id)
+    )
+    state = session_data.setdefault(user_id, {})
+    history = state.setdefault("chat_messages", [])
+    messages = [{"role": "system", "content": system}, *history[-10:],
+                {"role": "user", "content": message}]
+    try:
+        answer = _groq_answer(messages)
+    except RuntimeError as exc:
+        return jsonify({"error": str(exc)}), 503
+    history.extend([{"role": "user", "content": message},
+                    {"role": "assistant", "content": answer}])
+    state["chat_messages"] = history[-12:]
+    return jsonify({"success": True, "message": answer, "locale": locale})
+
+
+@app.post("/api/chat/reset")
+@login_required
+def reset_chat():
+    """Forget only the current user's in-memory assistant conversation."""
+    session_data.setdefault(_session_user_id(), {}).pop("chat_messages", None)
+    return jsonify({"success": True})
 
 
 def allowed_file(filename: str) -> bool:
@@ -977,12 +1190,17 @@ def signup():
             flash("Password must be at least 6 characters long.", "danger")
             return render_template("signup.html")
 
-        user_columns = _load_user_columns()
-        email_column = user_columns.get("email")
-        password_column = user_columns.get("password")
+        try:
+            user_columns = _load_user_columns()
+            email_column = user_columns.get("email")
+            password_column = user_columns.get("password")
+        except (mysql.connector.Error, RuntimeError) as exc:
+            app.logger.error("Signup schema lookup failed: %s", exc, exc_info=True)
+            flash("Database connection failed. Please try again later.", "danger")
+            return render_template("signup.html"), 503
         if not email_column or not password_column:
             flash("The users table is missing its email or password field.", "danger")
-            return render_template("signup.html")
+            return render_template("signup.html"), 503
 
         # Check whether the email is already used.
         existing = run_query(
@@ -993,6 +1211,8 @@ def signup():
             flash("This email is already registered. Please log in.", "warning")
             return redirect(url_for("login"))
 
+        conn = None
+        cur = None
         try:
             conn = get_db()
             cur = conn.cursor(dictionary=True)
@@ -1011,15 +1231,37 @@ def signup():
             name_parts = name.split(maxsplit=1)
             first_name = name_parts[0]
             last_name = name_parts[1] if len(name_parts) > 1 else ""
+            insert_values = []
+            insert_columns = []
+            display_column = user_columns.get("display")
+            if display_column:
+                insert_columns.append(display_column)
+                insert_values.append(name)
+            else:
+                if user_columns.get("first_name"):
+                    insert_columns.append(user_columns["first_name"])
+                    insert_values.append(first_name)
+                if user_columns.get("last_name"):
+                    insert_columns.append(user_columns["last_name"])
+                    insert_values.append(last_name)
+            insert_columns.extend([email_column, password_column])
+            insert_values.extend([email, generate_password_hash(password)])
+            if user_columns.get("company_id"):
+                insert_columns.append(user_columns["company_id"])
+                insert_values.append(company_id)
+            if user_columns.get("role"):
+                insert_columns.append(user_columns["role"])
+                insert_values.append("user")
+            if not display_column and not user_columns.get("first_name") and not user_columns.get("last_name"):
+                raise RuntimeError("The users table has no supported name field.")
+            quoted_columns = ", ".join(_quote_identifier(column) for column in insert_columns)
+            placeholders = ", ".join(["%s"] * len(insert_values))
             cur.execute(
-                "INSERT INTO users (firstName, lastName, email, password, role) "
-                "VALUES (%s, %s, %s, %s, %s)",
-                (first_name, last_name, email, generate_password_hash(password), "user"),
+                f"INSERT INTO users ({quoted_columns}) VALUES ({placeholders})",
+                tuple(insert_values),
             )
             user_id = cur.lastrowid
             conn.commit()
-            cur.close()
-            conn.close()
 
             _powerbi_resource(user_id)
 
@@ -1031,14 +1273,24 @@ def signup():
             session["company_name"] = company_name
             flash(f"Welcome to FinSight AI, {name}!", "success")
             return redirect(url_for("dashboard"))
-        except mysql.connector.Error as exc:
-            print(f"[finsight] Signup error: {exc}")
-            if exc.errno == errorcode.ER_ACCESS_DENIED_ERROR:
+        except (mysql.connector.Error, RuntimeError) as exc:
+            if conn is not None:
+                try:
+                    conn.rollback()
+                except mysql.connector.Error:
+                    pass
+            app.logger.error("Signup failed: %s", exc, exc_info=True)
+            if getattr(exc, "errno", None) == errorcode.ER_ACCESS_DENIED_ERROR:
                 flash("Cannot connect to MySQL: access denied. "
                       "Check DB_USER and DB_PASSWORD in your environment configuration.", "danger")
             else:
                 flash("We could not create your account right now. Please try again.", "danger")
             return render_template("signup.html")
+        finally:
+            if cur is not None:
+                cur.close()
+            if conn is not None:
+                conn.close()
 
     return render_template("signup.html")
 
@@ -1121,6 +1373,9 @@ def login():
 
 @app.post("/logout")
 def logout():
+    user_id = _session_user_id()
+    if user_id is not None:
+        session_data.pop(user_id, None)
     session.clear()
     flash("You have been logged out.", "info")
     return redirect(url_for("login"))
@@ -1221,6 +1476,7 @@ def dashboard():
 
 
 @app.route("/analytics")
+@app.route("/visualizations")
 @login_required
 def analytics():
     """Render only charts supported by the active dataset."""
@@ -1320,7 +1576,8 @@ def upload_preview():
     if not contents:
         return jsonify({"error": "File is empty."}), 400
     if len(contents) > MAX_CONTENT_LENGTH:
-        return jsonify({"error": "Uploaded file is too large. Maximum size is 16MB."}), 413
+        limit = round(MAX_CONTENT_LENGTH / (1024 * 1024), 2)
+        return jsonify({"error": f"Uploaded file is too large. Maximum size is {limit:g} MB."}), 413
     try:
         frame = _read_upload_dataframe(io.BytesIO(contents), filename)
         detection = detect_columns(frame)
@@ -1356,6 +1613,7 @@ def upload_file():
     if request.method == "GET":
         return render_template(
             "upload.html", company_name=session["company_name"], field_specs=FIELD_SPECS,
+            max_upload_mb=round(MAX_CONTENT_LENGTH / (1024 * 1024), 2),
         )
 
     if "file" not in request.files:
@@ -1639,6 +1897,9 @@ def _train_models_for(user_id: int, df: pd.DataFrame) -> None:
     
     # Fallback to old training if pipeline not available
     print("[finsight] Falling back to legacy model training")
+    if LinearRegression is None or train_test_split is None:
+        app.logger.warning("Regression training skipped because scikit-learn is unavailable.")
+        return
     feature_cols = ["Date_Number", "Month", "Day_of_Week"]
     X = df[feature_cols].fillna(0)
 
@@ -1789,6 +2050,89 @@ def _forecast_step_days(df: pd.DataFrame) -> int:
         return 1
 
 
+def _forecast_status(user_id: int, df: pd.DataFrame | None) -> dict[str, object]:
+    """Explain forecast readiness without turning data quality into a crash."""
+    status: dict[str, object] = {
+        "valid_dates": 0,
+        "invalid_dates": 0,
+        "date_column_found": False,
+        "date_mapping_found": True,
+        "target_counts": {},
+        "warning": "",
+    }
+    if df is None or df.empty:
+        status["warning"] = "Upload a dataset to enable forecasting."
+        return status
+
+    if "tx_date" not in df.columns:
+        status["warning"] = (
+            "Forecasting is currently unavailable because no usable date column was found. "
+            "Your data is still available for dashboard and analytics use."
+        )
+        return status
+
+    dates = pd.to_datetime(df["tx_date"], errors="coerce")
+    valid_date_count = int(dates.notna().sum())
+    status["valid_dates"] = valid_date_count
+    status["date_column_found"] = bool(valid_date_count)
+    try:
+        upload = run_query(
+            """SELECT column_mapping, cleaning_summary FROM uploaded_files
+               WHERE user_id=%s AND status='processed' ORDER BY id DESC LIMIT 1""",
+            (user_id,), fetchone=True,
+        )["row"] or {}
+        cleaning = json.loads(upload.get("cleaning_summary") or "{}")
+        status["invalid_dates"] = int(cleaning.get("invalid_dates") or 0)
+        mapping = json.loads(upload.get("column_mapping") or "{}")
+        if isinstance(mapping, dict) and not mapping.get("tx_date"):
+            status["date_column_found"] = False
+            status["date_mapping_found"] = False
+    except Exception as exc:
+        app.logger.warning("Forecast quality details unavailable: %s", exc)
+
+    counts: dict[str, int] = {}
+    for target in ("revenue", "expenses", "profit", "amount"):
+        if target not in df.columns:
+            continue
+        counts[target] = int(pd.to_numeric(df.loc[dates.notna(), target], errors="coerce").notna().sum())
+    status["target_counts"] = counts
+    if not status["date_mapping_found"]:
+        status["warning"] = (
+            "Forecasting is currently unavailable because no usable date column was found. "
+            "Check for Date, Transaction Date, Created Date, Timestamp, or Time. Your data is "
+            "still available for dashboard and analytics use."
+        )
+    elif not status["date_column_found"]:
+        invalid_note = (
+            f" {status['invalid_dates']} date values could not be parsed."
+            if status["invalid_dates"] else ""
+        )
+        status["warning"] = (
+            "Forecasting is currently unavailable because no valid dated observations were found."
+            f"{invalid_note} Check the date column and supported date formats. Your data is still "
+            "available for dashboard and analytics use."
+        )
+    else:
+        best_count = max(counts.values(), default=0)
+        if best_count < MIN_FORECAST_OBSERVATIONS:
+            invalid_note = (
+                f" {status['invalid_dates']} date values could not be parsed."
+                if status["invalid_dates"] else ""
+            )
+            status["warning"] = (
+                f"Forecasting is currently unavailable because the uploaded dataset contains only "
+                f"{best_count} valid dated numeric observations; at least {MIN_FORECAST_OBSERVATIONS} "
+                f"are needed for a reliable forecast.{invalid_note} Your data has still been successfully "
+                "loaded and can be used in the dashboard and analytics."
+            )
+        elif not _forecast_targets(df):
+            status["warning"] = (
+                "Forecasting is currently unavailable because the available financial values do not "
+                "contain enough variation. Your data is still available for dashboard and analytics use."
+            )
+    return status
+
+
 @app.route("/predict", methods=["GET", "POST"])
 @login_required
 def predict():
@@ -1804,6 +2148,7 @@ def predict():
                 .dropna().dt.strftime("%Y-%m-%d").unique().tolist()
             )
         forecast_targets = _forecast_targets(df)
+        forecast_status = _forecast_status(user_id, df)
         if available_dates:
             next_history_date = (pd.to_datetime(available_dates[-1]) +
                                  pd.Timedelta(days=_forecast_step_days(df))).date()
@@ -1833,6 +2178,7 @@ def predict():
             insight=(analysis or {}).get("insight", ""),
             section_types=(analysis or {}).get("types", {}),
             date_column=date_column,
+            forecast_status=forecast_status,
         )
 
     if not request.is_json:
@@ -2007,9 +2353,9 @@ def predict():
                 "estimated_error": float(prediction_info.get("estimated_error") or 0),
             },
         })
-    except Exception as exc:
-        traceback.print_exc()
-        return jsonify({"error": _message("api.error.predict_failed", error=str(exc))}), 500
+    except Exception:
+        app.logger.exception("Prediction request failed for user %s", user_id)
+        return jsonify({"error": "Prediction could not be completed. Please try again."}), 500
 
 
 def _build_chart(df: pd.DataFrame, model_type: str, forecast_points: list[dict]) -> str:
@@ -2248,8 +2594,62 @@ def powerbi():
     )
 
 
+def _powerbi_export_frame(frame: pd.DataFrame, *, source: bool = False) -> pd.DataFrame:
+    """Return a stable, Power BI-friendly frame without app-only artifacts."""
+    work = frame.copy() if frame is not None else pd.DataFrame()
+    if work.empty and len(work.columns) == 0:
+        return work
+    if source:
+        detection = detect_columns(work)
+        mapping = _add_generic_prediction_mapping(work, detection, detection.get("mapping", {}))
+        try:
+            work, _ = clean_dataframe(work, mapping)
+        except ValueError:
+            work = apply_mapping(work, mapping)
+        work = work.rename(columns={
+            "tx_date": "Date", "transaction_id": "Transaction_ID", "description": "Description",
+            "amount": "Amount", "revenue": "Revenue", "expenses": "Expenses", "profit": "Profit",
+            "customers": "Customers", "marketing_spend": "Marketing_Spend", "tx_type": "Transaction_Type",
+            "category": "Category", "payment_method": "Payment_Method", "department": "Department",
+            "city": "City", "status": "Status",
+        })
+    work.columns = [str(column).strip() for column in work.columns]
+    work = work.loc[:, ~work.columns.duplicated(keep="first")]
+    artifacts = {"date_number", "month", "day_of_week"}
+    remove = []
+    for column in work.columns:
+        normalized = re.sub(r"[^a-z0-9]+", "_", str(column).casefold()).strip("_")
+        if normalized.startswith("unnamed_") or normalized in artifacts:
+            remove.append(column)
+        elif normalized in {"index", "row_number"}:
+            values = pd.to_numeric(work[column], errors="coerce")
+            expected = pd.Series(range(len(work)), index=values.index, dtype="float64")
+            if values.notna().all() and values.astype("float64").equals(expected):
+                remove.append(column)
+    if remove:
+        work = work.drop(columns=remove)
+
+    for column in ("Date", "Prediction_Date", "First_Date", "Last_Date"):
+        if column in work.columns:
+            parsed = pd.to_datetime(work[column], errors="coerce")
+            work[column] = parsed.dt.date.where(parsed.notna(), None)
+    numeric_columns = {
+        "Amount", "Revenue", "Expenses", "Profit", "Customers", "Marketing_Spend",
+        "Predicted_Value", "Actual_Value", "Prediction_Error", "Total_Amount",
+        "Total_Revenue", "Total_Expenses", "Total_Profit", "Total_Customers",
+    }
+    for column in numeric_columns.intersection(work.columns):
+        work[column] = pd.to_numeric(work[column], errors="coerce")
+    try:
+        work = work.drop_duplicates()
+    except TypeError:
+        work = work.loc[~work.astype("string").duplicated()]
+    return work.reset_index(drop=True)
+
+
 def _excel_download(frame: pd.DataFrame, filename: str):
     """Return one in-memory .xlsx file without exposing a server file path."""
+    frame = _powerbi_export_frame(frame)
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl", datetime_format="yyyy-mm-dd") as writer:
         frame.to_excel(writer, sheet_name="Data", index=False)
@@ -2410,6 +2810,7 @@ def download_powerbi_excel(export_type: str):
             if not source.is_file():
                 return jsonify({"error": "The original uploaded file is unavailable."}), 404
             raw = _read_upload_dataframe(source, source.name)
+            raw = _powerbi_export_frame(raw, source=True)
             return _excel_download(raw, "finsight_raw_data.xlsx")
 
         if export_type == "cleaned":
@@ -2417,11 +2818,6 @@ def download_powerbi_excel(export_type: str):
             cleaned = frames["Cleaned_Data"].copy()
             if cleaned.empty:
                 return jsonify({"error": "Cleaned data does not exist for the current dataset."}), 404
-            dates = pd.to_datetime(cleaned["Date"], errors="coerce")
-            if dates.notna().any():
-                cleaned["Date_Number"] = (dates - dates.min()).dt.days
-                cleaned["Month"] = dates.dt.month
-                cleaned["Day_of_Week"] = dates.dt.dayofweek
             return _excel_download(cleaned, "finsight_cleaned_data.xlsx")
 
         prediction_rows = run_query(
@@ -2512,6 +2908,14 @@ def _powerbi_export_frames(user_id: int, company_name: str,
         )["rows"] or []
         cleaned = pd.DataFrame(cleaned_rows).reindex(columns=cleaned_columns)
 
+    cleaned = _powerbi_export_frame(cleaned)
+    for column, value in (("Upload_File_ID", dataset_id), ("User_ID", user_id),
+                          ("Imported_At", datetime.now().replace(microsecond=0))):
+        if column not in cleaned.columns:
+            cleaned[column] = value
+        else:
+            cleaned[column] = cleaned[column].where(cleaned[column].notna(), value)
+
     prediction_rows = run_query(
         """
          SELECT prediction_id AS Prediction_ID, prediction_type AS Prediction_Type,
@@ -2525,7 +2929,9 @@ def _powerbi_export_frames(user_id: int, company_name: str,
         """,
         (user_id, dataset_id, dataset_id), fetchall=True,
     )["rows"] or []
-    predictions = pd.DataFrame(prediction_rows).reindex(columns=prediction_columns)
+    predictions = _powerbi_export_frame(
+        pd.DataFrame(prediction_rows).reindex(columns=prediction_columns)
+    )
     metric_columns = ["Amount", "Revenue", "Expenses", "Profit", "Customers", "Marketing_Spend"]
     for column in metric_columns:
         cleaned[column] = pd.to_numeric(cleaned[column], errors="coerce")
@@ -2659,9 +3065,9 @@ def _generate_powerbi_resources(user_id: int, company_id: int, company_name: str
         if sheet_name == "README":
             continue
         filename = sheet_name.lower() + ".csv"
-        frame.to_csv(paths["data"] / filename, index=False)
-    frames["Cleaned_Data"].to_csv(paths["financial"], index=False)
-    frames["Predictions"].to_csv(paths["predictions"], index=False)
+        frame.to_csv(paths["data"] / filename, index=False, encoding="utf-8-sig")
+    frames["Cleaned_Data"].to_csv(paths["financial"], index=False, encoding="utf-8-sig")
+    frames["Predictions"].to_csv(paths["predictions"], index=False, encoding="utf-8-sig")
     # Always copy the neutral visual template into the active user's private
     # dataset folder. This prevents a stale PBIX from a previous dataset/template
     # version being returned to the current user.
@@ -2790,7 +3196,7 @@ def export_powerbi_data():
             mix_chart.title = "Transactions by Category"
             mix_chart.height = 8
             mix_chart.width = 15
-            mix_chart.add_data(Reference(category_sheet, min_col=6, max_col=6,
+            mix_chart.add_data(Reference(category_sheet, min_col=9, max_col=9,
                                          min_row=1, max_row=len(categories) + 1), titles_from_data=True)
             mix_chart.set_categories(Reference(category_sheet, min_col=1,
                                                min_row=2, max_row=len(categories) + 1))
@@ -2875,7 +3281,19 @@ def not_found(_):
 
 @app.errorhandler(413)
 def too_large(_):
-    return jsonify({"error": "Uploaded file is too large. Maximum size is 16MB."}), 413
+    limit = round(MAX_CONTENT_LENGTH / (1024 * 1024), 2)
+    return jsonify({"error": f"Uploaded file is too large. Maximum size is {limit:g} MB."}), 413
+
+
+@app.errorhandler(RuntimeError)
+def runtime_configuration_error(error):
+    """Keep configuration/runtime failures useful without exposing internals."""
+    app.logger.error("Application runtime failure: %s", error, exc_info=True)
+    message = "The application is temporarily unavailable. Please try again later."
+    if request.path.startswith("/api/") or request.is_json:
+        return jsonify({"error": message}), 503
+    flash(message, "danger")
+    return render_template("500.html"), 503
 
 
 @app.errorhandler(mysql.connector.Error)

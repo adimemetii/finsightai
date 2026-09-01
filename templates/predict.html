@@ -20,7 +20,7 @@
 </div></div>
 {% elif not forecast_targets %}
 <div class="alert alert-warning"><i class="fas fa-circle-info me-2"></i>
-  Not enough valid dated numeric history is available for a financial forecast. Upload at least 12 dated observations for Revenue, Expenses, Profit, or Amount.
+  {{ forecast_status.warning or 'Forecasting is currently unavailable for this dataset. Your data is still available for dashboard and analytics use.' }}
 </div>
 {% else %}
 <div class="row g-4">

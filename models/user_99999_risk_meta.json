@@ -5,12 +5,13 @@
     "profit",
     "amount"
   ],
+  "rule_based": true,
   "label_distribution": {
-    "LOW RISK": 56,
-    "HIGH RISK": 35,
-    "MEDIUM RISK": 9
+    "LOW RISK": 54,
+    "HIGH RISK": 43,
+    "MEDIUM RISK": 3
   },
-  "training_date": "2026-08-21T14:50:07.494062",
+  "training_date": "2026-08-28T02:42:55.675752",
   "risk_thresholds": {
     "high_risk": "profit < 0 OR expenses > revenue",
     "medium_risk": "revenue > 0 AND profit_margin < 0.08",
