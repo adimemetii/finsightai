@@ -219,9 +219,13 @@ ALLOWED_EXTENSIONS = {
 } | {"csv", "xlsx", "xls", "json"}
 MAX_DATA_COLUMNS = _int_env("MAX_DATA_COLUMNS", 200)
 GROQ_API_KEY = _env("GROQ_API_KEY")
-GROQ_DEFAULT_MODEL = "qwen/qwen3.6-27b"
-GROQ_FALLBACK_MODEL = _env("GROQ_FALLBACK_MODEL", "qwen/qwen3.8-27b")
-GROQ_MODEL = _env("GROQ_MODEL") or GROQ_DEFAULT_MODEL
+SUPPORTED_MODEL_CANDIDATES = (
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+    "qwen/qwen3-32b",
+)
+DEFAULT_MODEL = SUPPORTED_MODEL_CANDIDATES[0]
+FALLBACK_MODEL = SUPPORTED_MODEL_CANDIDATES[1]
 GROQ_TIMEOUT = max(10, min(120, _int_env("GROQ_TIMEOUT", 45)))
 
 
@@ -731,18 +735,14 @@ def _chat_data_context(user_id: int) -> str:
 
 def _groq_answer(messages: list[dict[str, str]]) -> str:
     """Call Groq's OpenAI-compatible endpoint without exposing the API key."""
-    # Read deployment configuration at request time so a Render restart or
-    # environment refresh is reflected without exposing credentials to the UI.
+    # Avoid any model-specific env dependency. The app falls back through a
+    # built-in list of supported Groq models so an API-key-only deployment works
+    # even when a project is restricted to a different model family.
     api_key = os.environ.get("GROQ_API_KEY", "").strip()
-    model = os.environ.get("GROQ_MODEL", "").strip() or GROQ_MODEL
     if not api_key:
         raise RuntimeError("The AI assistant is not configured on this deployment.")
-    # A stale or project-restricted Render GROQ_MODEL should not take the
-    # whole assistant offline. Try the configured model first, then the
-    # current default and a second current supported model. The fallback is
-    # only used when Groq rejects the selected model.
     models = []
-    for candidate in (model, GROQ_DEFAULT_MODEL, GROQ_FALLBACK_MODEL):
+    for candidate in SUPPORTED_MODEL_CANDIDATES:
         candidate = str(candidate or "").strip()
         if candidate and candidate not in models:
             models.append(candidate)
@@ -808,7 +808,7 @@ def _groq_answer(messages: list[dict[str, str]]) -> str:
             if (
                 (exc.code in (400, 404) and model_error) or permission_error
             ) and attempt + 1 < len(models):
-                app.logger.warning("Retrying Groq request with fallback model %s", models[attempt + 1])
+                app.logger.warning("Retrying Groq request with a fallback model %s", models[attempt + 1])
                 continue
             if exc.code == 401:
                 raise RuntimeError("The AI assistant credentials are invalid. Please try again later.") from exc

@@ -118,7 +118,7 @@ the server and returned as safe user-facing messages.
 Authenticated users can open the FinSight AI assistant from the shared
 application shell. The browser sends a question and CSRF token to Flask at
 `/api/chat`; Flask calls Groq using `GROQ_API_KEY` and the optional
-`GROQ_MODEL`. The key never reaches HTML, JavaScript, Git, or logs.
+the Groq API key. The key never reaches HTML, JavaScript, Git, or logs.
 
 The assistant keeps a bounded conversation in the current user session and
 receives compact context: row count, date range, financial totals/averages,

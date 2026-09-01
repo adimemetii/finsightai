@@ -129,7 +129,6 @@ SECRET_KEY=change-me
 
 # Groq backend assistant (never expose this in frontend code)
 GROQ_API_KEY=
-GROQ_MODEL=qwen/qwen3.6-27b
 GROQ_TIMEOUT=45
 
 DB_HOST=localhost
@@ -236,7 +235,9 @@ The repository also includes `render.yaml`, which installs the requirements,
 starts Gunicorn on Render's `$PORT`, and checks `/healthz`. The Flask module
 initializes/upgrades the MySQL schema when the production process starts. Set
 `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_SSL_CA`, and
-`GROQ_API_KEY` as Render environment variables; `GROQ_MODEL` is optional.
+`GROQ_API_KEY` as Render environment variables. The app automatically tries a
+built-in list of supported Groq models, so no model-specific environment
+variables are required.
 
 ## Troubleshooting
 
