@@ -792,8 +792,13 @@ def _groq_answer(messages: list[dict[str, str]]) -> str:
             if exc.code in (400, 404) and model_error and attempt + 1 < len(models):
                 app.logger.warning("Retrying Groq request with fallback model %s", models[attempt + 1])
                 continue
-            if exc.code in (401, 403):
+            if exc.code == 401:
                 raise RuntimeError("The AI assistant credentials are invalid. Please try again later.") from exc
+            if exc.code == 403:
+                raise RuntimeError(
+                    "The AI assistant does not have permission to use the configured model. "
+                    "Please check the Groq project model permissions."
+                ) from exc
             if exc.code == 429:
                 raise RuntimeError("The AI assistant is temporarily busy. Please try again in a moment.") from exc
             if exc.code in (400, 404) and model_error:
