@@ -10,8 +10,10 @@ services:
     envVars:
       - key: SECRET_KEY
         generateValue: true
-      - key: GROQ_API_KEY
+      - key: OPENROUTER_API_KEY
         sync: false
+      - key: OPENROUTER_MODEL
+        value: meta-llama/llama-3.1-8b-instruct:free
       - key: GROQ_TIMEOUT
         value: "45"
       - key: DB_HOST

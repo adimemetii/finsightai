@@ -218,14 +218,8 @@ ALLOWED_EXTENSIONS = {
     e.lower() for e in _env("ALLOWED_EXTENSIONS", "csv,xlsx,xls,json").split(",") if e
 } | {"csv", "xlsx", "xls", "json"}
 MAX_DATA_COLUMNS = _int_env("MAX_DATA_COLUMNS", 200)
-GROQ_API_KEY = _env("GROQ_API_KEY")
-# Use a single current Groq model directly in code so deployments that only
-# provide GROQ_API_KEY still work without any additional environment variable.
-SUPPORTED_MODEL_CANDIDATES = (
-    "llama-3.1-8b-instant",
-)
-DEFAULT_MODEL = SUPPORTED_MODEL_CANDIDATES[0]
-FALLBACK_MODEL = DEFAULT_MODEL
+OPENROUTER_API_KEY = _env("OPENROUTER_API_KEY")
+OPENROUTER_MODEL = _env("OPENROUTER_MODEL", "meta-llama/llama-3.1-8b-instruct:free")
 GROQ_TIMEOUT = max(10, min(120, _int_env("GROQ_TIMEOUT", 45)))
 
 
@@ -733,42 +727,33 @@ def _chat_data_context(user_id: int) -> str:
     return "\n".join(lines)[:10000]
 
 
-def _groq_answer(messages: list[dict[str, str]]) -> str:
-    """Call Groq's OpenAI-compatible endpoint without exposing the API key."""
-    # Avoid any model-specific env dependency. The app falls back through a
-    # built-in list of supported Groq models so an API-key-only deployment works
-    # even when a project is restricted to a different model family.
-    api_key = os.environ.get("GROQ_API_KEY", "").strip()
+def _openrouter_answer(messages: list[dict[str, str]]) -> str:
+    """Call OpenRouter's OpenAI-compatible endpoint without exposing the key."""
+    api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("The AI assistant is not configured on this deployment.")
-    models = []
-    for candidate in SUPPORTED_MODEL_CANDIDATES:
-        candidate = str(candidate or "").strip()
-        if candidate and candidate not in models:
-            models.append(candidate)
-    body = None
-    for attempt, request_model in enumerate(models):
-        payload = json.dumps({
-            "model": request_model,
-            "messages": messages,
-            "temperature": 0.25,
-            "max_completion_tokens": 700,
-        }).encode("utf-8")
-        request_obj = Request(
-            "https://api.groq.com/openai/v1/chat/completions",
-            data=payload,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
-            method="POST",
-        )
-        try:
-            with urlopen(request_obj, timeout=GROQ_TIMEOUT) as response:
-                body = json.loads(response.read().decode("utf-8"))
-            break
-        except HTTPError as exc:
+    payload = json.dumps({
+        "model": OPENROUTER_MODEL,
+        "messages": messages,
+        "temperature": 0.25,
+        "max_tokens": 700,
+    }).encode("utf-8")
+    request_obj = Request(
+        "https://openrouter.ai/api/v1/chat/completions",
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "HTTP-Referer": "https://finsightai-3ea6.onrender.com",
+            "X-Title": "FinSight AI",
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(request_obj, timeout=GROQ_TIMEOUT) as response:
+            body = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
             # The provider's message is useful in Render logs (invalid model,
             # quota, authentication, etc.), but never log request headers or
             # the API key. Keep the browser-facing response safe.
@@ -787,47 +772,25 @@ def _groq_answer(messages: list[dict[str, str]]) -> str:
             detail = re.sub(r"(?i)bearer\s+[A-Za-z0-9._-]+", "bearer [redacted]", detail)
             detail = re.sub(r"(?i)gsk_[A-Za-z0-9_-]+", "[redacted]", detail)
             app.logger.warning(
-                "Groq request returned HTTP %s for model %s (provider code %s): %s",
-                exc.code, request_model, provider_code or "unknown",
+                "OpenRouter request returned HTTP %s for model %s (provider code %s): %s",
+                exc.code, OPENROUTER_MODEL, provider_code or "unknown",
                 detail[:500] or "no provider detail",
             )
-            model_error = bool(re.search(
-                r"(?i)(?:invalid|unknown|unsupported|not found|does not exist).{0,40}\bmodel\b"
-                r"|\bmodel\b.{0,40}(?:invalid|unknown|unsupported|not found|does not exist)",
-                detail,
-            ))
-            # Groq returns 403 when a project/org model policy rejects the
-            # selected model. Some responses contain no JSON body (as seen
-            # in production), so treat a body-less 403 as a model permission
-            # failure and try the next supported model as well.
-            permission_error = exc.code == 403 and (
-                provider_code.startswith("model_permission_")
-                or bool(re.search(r"(?i)permission|blocked|restricted|model", detail))
-                or not detail
-            )
-            if (
-                (exc.code in (400, 404) and model_error) or permission_error
-            ) and attempt + 1 < len(models):
-                app.logger.warning("Retrying Groq request with a fallback model %s", models[attempt + 1])
-                continue
             if exc.code == 401:
                 raise RuntimeError("The AI assistant credentials are invalid. Please try again later.") from exc
-            if exc.code == 403:
+            if exc.code in (401, 403):
                 raise RuntimeError(
-                    "The AI assistant does not have permission to use the configured model. "
-                    "Please check the Groq project model permissions."
+                    "The AI assistant key is invalid or the selected OpenRouter model is unavailable."
                 ) from exc
             if exc.code == 429:
                 raise RuntimeError("The AI assistant is temporarily busy. Please try again in a moment.") from exc
-            if exc.code in (400, 404) and model_error:
-                raise RuntimeError("The AI assistant model configuration is unavailable. Please try again later.") from exc
             raise RuntimeError("The AI assistant could not complete that request.") from exc
-        except (URLError, TimeoutError) as exc:
-            app.logger.warning("Groq request failed: %s", type(exc).__name__)
-            raise RuntimeError("The AI assistant is temporarily unavailable. Please try again.") from exc
-        except (ValueError, OSError) as exc:
-            app.logger.warning("Groq response could not be read: %s", type(exc).__name__)
-            raise RuntimeError("The AI assistant returned an invalid response.") from exc
+    except (URLError, TimeoutError) as exc:
+        app.logger.warning("OpenRouter request failed: %s", type(exc).__name__)
+        raise RuntimeError("The AI assistant is temporarily unavailable. Please try again.") from exc
+    except (ValueError, OSError) as exc:
+        app.logger.warning("OpenRouter response could not be read: %s", type(exc).__name__)
+        raise RuntimeError("The AI assistant returned an invalid response.") from exc
 
     try:
         content = body["choices"][0]["message"]["content"]
@@ -883,7 +846,7 @@ def chat():
     messages = [{"role": "system", "content": system}, *history[-10:],
                 {"role": "user", "content": message}]
     try:
-        answer = _groq_answer(messages)
+        answer = _openrouter_answer(messages)
     except RuntimeError as exc:
         return jsonify({"error": str(exc)}), 503
     history.extend([{"role": "user", "content": message},
