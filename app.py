@@ -219,7 +219,7 @@ ALLOWED_EXTENSIONS = {
 } | {"csv", "xlsx", "xls", "json"}
 MAX_DATA_COLUMNS = _int_env("MAX_DATA_COLUMNS", 200)
 OPENROUTER_API_KEY = _env("OPENROUTER_API_KEY")
-OPENROUTER_MODEL = _env("OPENROUTER_MODEL", "meta-llama/llama-3.1-8b-instruct:free")
+OPENROUTER_MODEL = _env("OPENROUTER_MODEL", "openrouter/free")
 GROQ_TIMEOUT = max(10, min(120, _int_env("GROQ_TIMEOUT", 45)))
 
 
