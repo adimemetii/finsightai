@@ -219,13 +219,13 @@ ALLOWED_EXTENSIONS = {
 } | {"csv", "xlsx", "xls", "json"}
 MAX_DATA_COLUMNS = _int_env("MAX_DATA_COLUMNS", 200)
 GROQ_API_KEY = _env("GROQ_API_KEY")
+# Use a single current Groq model directly in code so deployments that only
+# provide GROQ_API_KEY still work without any additional environment variable.
 SUPPORTED_MODEL_CANDIDATES = (
-    "llama-3.3-70b-versatile",
     "llama-3.1-8b-instant",
-    "qwen/qwen3-32b",
 )
 DEFAULT_MODEL = SUPPORTED_MODEL_CANDIDATES[0]
-FALLBACK_MODEL = SUPPORTED_MODEL_CANDIDATES[1]
+FALLBACK_MODEL = DEFAULT_MODEL
 GROQ_TIMEOUT = max(10, min(120, _int_env("GROQ_TIMEOUT", 45)))
 
 
