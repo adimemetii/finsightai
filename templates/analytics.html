@@ -37,7 +37,7 @@
 </div>
 
 <div class="row g-4">
-    {% if has_trend %}<div class="col-xl-8"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0"><h5 class="mb-0"><i class="fas fa-chart-area"></i> Area trend</h5></div><div class="card-body"><canvas id="areaChart" aria-label="Area chart based on uploaded data"></canvas></div></div></div>{% endif %}
+    {% if has_area %}<div class="col-xl-8"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0"><h5 class="mb-0"><i class="fas fa-chart-area"></i> Area chart</h5></div><div class="card-body"><canvas id="areaChart" aria-label="Area chart based on uploaded data"></canvas></div></div></div>{% endif %}
     {% if has_categories %}<div class="col-xl-4"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0"><h5 class="mb-0"><i class="fas fa-chart-pie"></i> {{ category_metric_label }} by {{ category_label }}</h5></div><div class="card-body"><canvas id="categoryChart"></canvas></div></div></div>{% endif %}
     {% if has_totals %}<div class="col-xl-6"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0"><h5 class="mb-0"><i class="fas fa-chart-column"></i> {{ t('analytics.totals') }}</h5></div><div class="card-body"><canvas id="totalsChart"></canvas></div></div></div>{% endif %}
     {% if has_cities %}<div class="col-xl-6"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0"><h5 class="mb-0"><i class="fas fa-city"></i> {{ t('analytics.city') }}</h5></div><div class="card-body p-2"><div id="cityMap"></div></div></div></div>{% endif %}
@@ -51,6 +51,7 @@
 {% if cities %}<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>{% endif %}
 <script>
 const monthly = {{ monthly|tojson }};
+const areaData = {{ area_data|tojson }};
 const categories = {{ categories|tojson }};
 const cities = {{ cities|tojson }};
 const totals = {{ totals|tojson }};
@@ -72,15 +73,15 @@ Chart.defaults.font.family = 'Inter, ui-sans-serif, system-ui, sans-serif';
 const trendColors = ['#8cbcff', '#69d6a3', '#f5c76e', '#ff8b99', '#c4a7ff', '#75d6db', '#f39bbd'];
 const chartDataset = trendKeys.map((key, i) => ({
     label: (trendLabels[i] || localizedLabel(key)),
-    data: monthly.map(row => row[key] !== undefined && row[key] !== null ? row[key] : null),
+    data: areaData.map(row => row[key] !== undefined && row[key] !== null ? row[key] : null),
     borderColor: trendColors[i % trendColors.length],
     backgroundColor: trendColors[i % trendColors.length] + '22',
     fill: 'origin', tension: .35
 }));
 
-{% if has_trend %}new Chart(document.getElementById('areaChart'), {
+{% if has_area %}new Chart(document.getElementById('areaChart'), {
     type: 'line',
-    data: { labels: monthly.map(row => row.period), datasets: chartDataset },
+    data: { labels: areaData.map(row => row.period), datasets: chartDataset },
     options: {responsive: true, maintainAspectRatio: false, interaction: {intersect: false, mode: 'index'}, scales: {y: {ticks: {callback: number}, grid: {color: 'rgba(255,255,255,.08)'}}, x: {grid: {display: false}}}}
 });{% endif %}
 

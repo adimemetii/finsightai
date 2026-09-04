@@ -1481,6 +1481,7 @@ def analytics():
         "company_name": session["company_name"], "has_data": False, "monthly": [],
         "categories": [], "cities": [], "totals": {}, "trend_keys": [],
         "trend_labels": [], "category_label": "Category", "has_trend": False,
+        "area_data": [], "has_area": False,
         "category_metric_label": "Rows", "has_categories": False,
         "has_totals": False, "has_cities": False, "generic_analytics": True,
     }
@@ -1511,6 +1512,11 @@ def analytics():
         if not dated.empty:
             monthly_frame = dated.groupby("_period", as_index=False)[trend_keys].sum(min_count=1)
             monthly = monthly_frame.rename(columns={"_period": "period"}).to_dict("records")
+    area_data = monthly
+    if not area_data and trend_keys:
+        area_frame = working[trend_keys].head(120).copy()
+        area_frame.insert(0, "period", [f"Row {index + 1}" for index in range(len(area_frame))])
+        area_data = area_frame.to_dict("records")
 
     category_col = next((name for name in typed_dimensions if working[name].notna().any()), None)
     value_col = numeric_columns[0] if numeric_columns else None
@@ -1541,12 +1547,13 @@ def analytics():
               for column in numeric_columns}
     return render_template(
         "analytics.html", company_name=session["company_name"], has_data=True,
-        monthly=monthly, categories=categories, cities=cities, totals=totals,
+        monthly=monthly, area_data=area_data, categories=categories, cities=cities, totals=totals,
         generic_analytics=True, trend_keys=trend_keys,
         trend_labels=[str(column).replace("_", " ").title() for column in trend_keys],
         category_label=category_col.replace("_", " ").title() if category_col else "Category",
         category_metric_label=category_metric_label,
-        has_trend=bool(monthly and trend_keys), has_categories=bool(categories),
+        has_trend=bool(monthly and trend_keys), has_area=bool(area_data and trend_keys),
+        has_categories=bool(categories),
         has_totals=bool(totals), has_cities=bool(cities),
     )
 
