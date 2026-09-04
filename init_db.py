@@ -165,6 +165,7 @@ TABLES: list[str] = [
         column_mapping  LONGTEXT     NULL,
         cleaning_summary LONGTEXT    NULL,
         upload_warnings LONGTEXT     NULL,
+        raw_data        LONGBLOB      NULL,
         file_size       BIGINT       NOT NULL DEFAULT 0,
         rows_imported   INT          NOT NULL DEFAULT 0,
         status          VARCHAR(40)  NOT NULL DEFAULT 'uploaded',
@@ -494,6 +495,8 @@ def create_tables() -> None:
                               "LONGTEXT NULL AFTER column_mapping")
         add_column_if_missing(cursor, "uploaded_files", "upload_warnings",
                               "LONGTEXT NULL AFTER cleaning_summary")
+        add_column_if_missing(cursor, "uploaded_files", "raw_data",
+                              "LONGBLOB NULL AFTER upload_warnings")
         add_column_if_missing(cursor, "financial_data", "customers",
                               "DECIMAL(18, 2) NULL AFTER profit")
         add_column_if_missing(cursor, "financial_data", "marketing_spend",
@@ -502,6 +505,11 @@ def create_tables() -> None:
                               "DECIMAL(18, 2) NULL AFTER prediction_date")
         add_column_if_missing(cursor, "predictions", "prediction_error",
                               "DECIMAL(18, 2) NULL AFTER predicted_value")
+        # Generic datasets may use a longer normalized column name than the
+        # original financial-only schema allowed. Never truncate a target name.
+        cursor.execute(
+            "ALTER TABLE predictions MODIFY COLUMN prediction_type VARCHAR(255) NOT NULL"
+        )
         for ddl in MIGRATIONS:
             try:
                 cursor.execute(ddl)

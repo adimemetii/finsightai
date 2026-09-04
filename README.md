@@ -1,8 +1,8 @@
 # FinSight AI - Financial Forecasting Platform
 
 A multi-tenant Flask + MySQL web application for cleaning,
-analysing, and forecasting financial data with company-based
-data isolation, a data-aware Groq assistant, and Power BI-ready exports.
+analysing, and forecasting uploaded business data with company-based
+data isolation, a data-aware OpenRouter assistant, and Power BI-ready exports.
 
 ---
 
@@ -41,11 +41,12 @@ On PowerShell use `run.ps1` instead of `run.bat`.
   `company_id`. A user from Company A can never see Company B data.
 - 📤 **Robust uploads** - CSV / XLSX / XLS / JSON accepted, dragged or clicked,
   profiled, mapped, cleaned, validated, and inserted into MySQL.
-- 📊 **Dashboard** - KPI cards (rows, revenue, expenses, profit),
+- 📊 **Dashboard** - KPI cards for row counts and numeric measures detected
+  in the active upload,
   recent uploads, recent predictions, quick action buttons.
-- 🔮 **Forecasting** - available financial targets with historical context,
+- 🔮 **Forecasting** - available dated numeric targets with historical context,
   configurable horizons, model information, and persisted forecast points.
-- 💬 **Groq AI assistant** - an authenticated conversational assistant that
+- 💬 **OpenRouter AI assistant** - an authenticated conversational assistant that
   uses compact, user-scoped financial summaries and follows the existing
   navbar language selector.
 - 🕓 **Dashboard history** - every upload, prediction and signup is
@@ -127,8 +128,9 @@ FLASK_DEBUG=True
 FLASK_APP=app.py
 SECRET_KEY=change-me
 
-# Groq backend assistant (never expose this in frontend code)
-GROQ_API_KEY=
+# OpenRouter backend assistant (never expose this in frontend code)
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=openrouter/free
 GROQ_TIMEOUT=45
 
 DB_HOST=localhost
@@ -148,7 +150,7 @@ POWERBI_TEMPLATE=finsightai.pbix
 
 The application uses the `DB_*` names above. Existing local installations
 using the legacy `MYSQL_*` names remain supported as a compatibility fallback.
-`GROQ_API_KEY` is required only for live chatbot answers; without it, the
+`OPENROUTER_API_KEY` is required only for live chatbot answers; without it, the
 application remains usable and the chat UI returns a clear configuration
 message. The API key is read only by Flask and is never sent to the browser.
 
@@ -158,8 +160,8 @@ message. The API key is read only by Flask and is never sent to the browser.
 
 The app generates user-owned UTF-8 CSV sources, analytics tables, an Excel
 data export, and a copy of the reusable `finsightai.pbix` template. Exports
-remove synthetic index/processing columns, normalize dates, convert financial
-fields to numeric values, and preserve the cleaned business rows.
+preserve the active upload's cleaned columns, normalize detected dates and
+numeric measures, and include only predictions saved for that upload.
 Open the **Power BI Desktop** page, click **Generate / Refresh Power BI**,
 then download the Power BI file and open it in Power BI Desktop. Refresh
 the local data sources when prompted. No online account or URL is required.
@@ -177,7 +179,7 @@ See [powerbi_setup.md](powerbi_setup.md) for the Desktop workflow.
 ## AI chatbot
 
 The authenticated chat endpoint is `POST /api/chat`. The browser sends only a
-question and CSRF token to Flask; Flask calls Groq's OpenAI-compatible API with
+question and CSRF token to Flask; Flask calls OpenRouter's OpenAI-compatible API with
 the configured model. Conversation history is bounded and kept per user in the
 current worker process. The prompt contains aggregate KPIs, date range, small
 category rankings, trends, and recent predictions—not the full upload.
@@ -206,8 +208,9 @@ specific warning while the dashboard and analytics remain usable.
    dashboard.
 2. **Login / Logout** - log out and back in.
 3. **Upload** - drop a CSV / XLSX / XLS / JSON file, review the mapping, and
-   watch the cleaned rows land in
-   `financial_data` with the correct `company_id`.
+   watch the cleaned rows land in the database-backed `dataset_rows` store
+   with the correct `company_id` (plus nullable legacy projections where
+   applicable).
 4. **Forecast** - choose a target, horizon, and future date, see the values
    stored in `predictions`.
 5. **Database** - verify both the upload and the prediction show up.
@@ -225,9 +228,9 @@ limit. The upload screen previews the file, normalizes common business aliases
 Spend), reports confidence, and lets the user manually map uncertain fields
 before saving.
 
-Date and Revenue are the required minimum for the complete financial flow;
-Expenses, Profit, Customers, Category, Department, City, Payment Method, and
-Marketing Spend are optional. Non-standard columns are retained in the
+Date, Revenue, Expenses, Profit, and other business fields are optional. A
+usable dated numeric measure is required only for forecasting; otherwise the
+upload is still analyzed from its detected structure. Non-standard columns are retained in the
 database-backed `dataset_rows` JSON store, while standard financial fields stay
 available through the existing `financial_data` compatibility table.
 
@@ -235,15 +238,14 @@ The repository also includes `render.yaml`, which installs the requirements,
 starts Gunicorn on Render's `$PORT`, and checks `/healthz`. The Flask module
 initializes/upgrades the MySQL schema when the production process starts. Set
 `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_SSL_CA`, and
-`GROQ_API_KEY` as Render environment variables. The app automatically tries a
-built-in list of supported Groq models, so no model-specific environment
-variables are required.
+`OPENROUTER_API_KEY` as Render environment variables. `OPENROUTER_MODEL` can
+select the model; the default is `openrouter/free`.
 
 ## Troubleshooting
 
 - **Database connection failed:** verify the Aiven host, port, database name,
   credentials, and CA certificate. Aiven TLS verification is enabled.
-- **Chat is not configured:** add `GROQ_API_KEY` in Render or the local `.env`.
+- **Chat is not configured:** add `OPENROUTER_API_KEY` in Render or the local `.env`.
   Never place it in HTML, JavaScript, Git, or a README.
 - **Forecast unavailable:** inspect the upload warning for the valid dated
   observation count, invalid-date count, or missing date-column explanation.

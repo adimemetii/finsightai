@@ -21,7 +21,9 @@ FIELD_SPECS: dict[str, dict[str, Any]] = {
     "tx_date": {
         "label": "Date",
         "kind": "date",
-        "priority": "required",
+        # A date is useful for time-series analysis, but uploads are not
+        # restricted to time-series data.
+        "priority": "recommended",
         "aliases": [
             "date", "transaction_date", "sale_date", "invoice_date",
             "order_date", "created_at", "created_date", "timestamp", "time", "period",
@@ -30,7 +32,8 @@ FIELD_SPECS: dict[str, dict[str, Any]] = {
     "revenue": {
         "label": "Revenue",
         "kind": "numeric",
-        "priority": "required",
+        # Revenue is a helpful business alias, not a schema requirement.
+        "priority": "recommended",
         "aliases": [
             "revenue", "sales", "sales_amount", "total_sales", "income",
             "turnover", "gross_sales", "sale_amount", "total_revenue",
@@ -185,35 +188,53 @@ def _date_ratio(series: pd.Series) -> float:
     return float(parsed.notna().mean())
 
 
+def _unique_count(series: pd.Series) -> int:
+    """Count distinct values without rejecting list/dict JSON fields."""
+    try:
+        return int(series.nunique(dropna=True))
+    except (TypeError, ValueError):
+        return int(series.astype("string").nunique(dropna=True))
+
+
 def _parse_dates(series: pd.Series) -> pd.Series:
     """Parse text, timestamps, and common Excel serial dates safely."""
     if series is None:
         return pd.Series(dtype="datetime64[ns]")
     result = pd.Series(pd.NaT, index=series.index, dtype="datetime64[ns]")
+
+    def assign_valid(parsed: pd.Series) -> None:
+        """Assign only representable timestamps; bad values stay NaT."""
+        for index, value in parsed.items():
+            try:
+                if pd.notna(value):
+                    result.at[index] = pd.Timestamp(value)
+            except (TypeError, ValueError, OverflowError, pd.errors.OutOfBoundsDatetime):
+                continue
+
     numeric = pd.to_numeric(series, errors="coerce")
     # Excel's 1900 date system is represented by serial days. Avoid
     # interpreting ordinary amounts as dates by requiring a date-like range.
     excel_mask = numeric.between(2000, 100000, inclusive="both")
     if excel_mask.any():
-        result.loc[excel_mask] = pd.to_datetime(
+        assign_valid(pd.to_datetime(
             numeric.loc[excel_mask], unit="D", origin="1899-12-30", errors="coerce"
-        )
+        ))
     text = series.astype("string").str.strip()
     ymd_mask = text.str.fullmatch(r"\d{8}", na=False)
     if ymd_mask.any():
-        result.loc[ymd_mask] = pd.to_datetime(
+        assign_valid(pd.to_datetime(
             text.loc[ymd_mask], format="%Y%m%d", errors="coerce"
-        )
-    remaining = result.isna() & ~excel_mask & ~ymd_mask
+        ))
+    # Do not let ordinary numeric measures be interpreted as years/dates by
+    # pandas' scalar parser. Excel serials and explicit YYYYMMDD strings were
+    # handled above; all other numeric values remain non-dates.
+    remaining = result.isna() & ~excel_mask & ~ymd_mask & numeric.isna()
     if remaining.any():
         try:
-            result.loc[remaining] = pd.to_datetime(
-                series.loc[remaining], errors="coerce", format="mixed"
-            )
+            parsed = pd.to_datetime(series.loc[remaining], errors="coerce", format="mixed")
         except (TypeError, ValueError):
-            result.loc[remaining] = pd.to_datetime(
-                series.loc[remaining], errors="coerce"
-            )
+            parsed = pd.to_datetime(series.loc[remaining], errors="coerce")
+        assign_valid(parsed)
     return result
 
 
@@ -222,9 +243,9 @@ def _value_type(series: pd.Series) -> str:
         return "empty"
     if _numeric_ratio(series) >= 0.85:
         return "numeric"
-    if _date_ratio(series) >= 0.85:
+    if _date_ratio(series) >= 0.6:
         return "date"
-    unique = int(series.nunique(dropna=True))
+    unique = _unique_count(series)
     if unique <= 1:
         return "constant"
     if unique >= max(20, int(len(series.dropna()) * 0.85)):
@@ -410,6 +431,15 @@ def _numeric_series(series: pd.Series) -> pd.Series:
     return values.where(~negative, -values.abs())
 
 
+def _looks_like_identifier(name: Any) -> bool:
+    """Avoid converting identifier strings such as ``000123`` to numbers."""
+    normalized = normalize_column_name(name)
+    return (
+        normalized in {"id", "index", "number", "code", "key", "reference"}
+        or normalized.endswith(("_id", "_code", "_key", "_number", "_reference"))
+    )
+
+
 def clean_dataframe(df: pd.DataFrame, mapping: dict[str, str] | None = None) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Clean an upload and return the cleaned frame plus factual metrics."""
     if df is None or df.empty:
@@ -441,13 +471,18 @@ def clean_dataframe(df: pd.DataFrame, mapping: dict[str, str] | None = None) -> 
     blank_rows_removed = original_rows - int(len(work))
     work = work.dropna(axis=1, how="all").copy()
 
-    for column in CANONICAL_TEXT_FIELDS:
-        if column in work.columns:
+    # Normalize whitespace for every uploaded text-like column, including
+    # columns that are not part of the optional business alias list.  Missing
+    # values remain missing; the cleaner never invents replacements for them.
+    for column in work.columns:
+        if pd.api.types.is_object_dtype(work[column]) or pd.api.types.is_string_dtype(work[column]):
             work[column] = work[column].map(
                 lambda value: value.strip() if isinstance(value, str) else value
             )
+    work = work.replace([np.inf, -np.inf], np.nan)
 
     numeric_invalid = 0
+    invalid_dates = 0
     for column in CANONICAL_NUMERIC_FIELDS:
         if column in work.columns:
             before = work[column].notna()
@@ -455,25 +490,38 @@ def clean_dataframe(df: pd.DataFrame, mapping: dict[str, str] | None = None) -> 
             numeric_invalid += int((before & converted.isna()).sum())
             work[column] = converted
 
-    invalid_dates = 0
+    # Apply the same type normalization to non-standard numeric/date columns.
+    # Identifier-looking columns are deliberately excluded so values such as
+    # customer codes with leading zeroes are preserved exactly.
+    for column in list(work.columns):
+        if column in CANONICAL_NUMERIC_FIELDS or column in CANONICAL_TEXT_FIELDS or column == "tx_date":
+            continue
+        series = work[column]
+        if pd.api.types.is_bool_dtype(series) or _looks_like_identifier(column):
+            continue
+        try:
+            value_type = _value_type(series)
+            if value_type == "numeric" and _numeric_ratio(series) >= 0.85:
+                before = series.notna()
+                converted = _numeric_series(series)
+                numeric_invalid += int((before & converted.isna()).sum())
+                work[column] = converted
+            elif value_type == "date" and _date_ratio(series) >= 0.6:
+                non_empty = series.notna() & series.astype("string").str.strip().ne("")
+                parsed = _parse_dates(series)
+                invalid_dates += int((non_empty & parsed.isna()).sum())
+                work[column] = parsed
+        except (TypeError, ValueError):
+            # An unusual column remains available in its original form rather
+            # than causing an otherwise valid dataset to fail cleaning.
+            continue
+
     if "tx_date" in work.columns:
         raw_date = work["tx_date"]
         non_empty = raw_date.notna() & raw_date.astype("string").str.strip().ne("")
         parsed = _parse_dates(raw_date)
-        invalid_dates = int((non_empty & parsed.isna()).sum())
+        invalid_dates += int((non_empty & parsed.isna()).sum())
         work["tx_date"] = parsed
-
-    derived_profit = False
-    if {"revenue", "expenses"}.issubset(work.columns):
-        if "profit" not in work.columns:
-            work["profit"] = np.nan
-        if work["profit"].isna().all():
-            available = work["revenue"].notna() | work["expenses"].notna()
-            work.loc[available, "profit"] = (
-                work.loc[available, "revenue"].fillna(0)
-                - work.loc[available, "expenses"].fillna(0)
-            )
-            derived_profit = bool(available.any())
 
     # Compare normalized values so formatting differences such as "$1,200"
     # versus "1200" do not allow duplicate business rows through.
@@ -499,7 +547,9 @@ def clean_dataframe(df: pd.DataFrame, mapping: dict[str, str] | None = None) -> 
         "invalid_dates": invalid_dates,
         "invalid_numeric_values": numeric_invalid,
         "missing_values_remaining": missing_values,
-        "derived_profit": derived_profit,
+        # Kept in the response for compatibility with existing clients.  It is
+        # always false because the cleaner must not invent business columns.
+        "derived_profit": False,
     }
     return work, summary
 

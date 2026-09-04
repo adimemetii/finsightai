@@ -24,8 +24,10 @@ This document explains the local Desktop workflow and its technical limits.
 1. In FinSight AI, log in as the user and open **Power BI**.
 2. Click **Download Excel for Power BI**.
 3. In Power BI Desktop select **Get Data -> Excel** and choose the downloaded file.
-4. Load `Cleaned_Data`, `Predictions`, `KPI_Summary`, `Monthly_Analysis`, and
-   `Category_Analysis`. The `README` sheet describes each table.
+4. Load `Cleaned_Data`, `Predictions`, `KPI_Summary`, `Time_Analysis`, and
+   `Category_Analysis`. The `README` sheet describes the actual detected
+   columns and measures; additional dimension-analysis sheets are included
+   when the upload contains categorical, text, or boolean columns.
 5. Create the visuals and save the result as a `.pbix` file on your computer.
 
 The export is scoped to the signed-in user's latest dataset; another user
@@ -66,10 +68,11 @@ filter every visual down to a single company with one click.
 5. Refresh the local CSV sources from the user's private `users/<token>/powerbi/data`
   folder. The generated `README-PowerBI-Desktop.txt` lists the source files.
 
-The generated data includes cleaned transactions, predictions, KPI totals,
-monthly and category analysis, city, payment, company, department, status,
-and prediction-versus-actual tables. The Excel download contains the same
-data plus an Excel dashboard and named tables.
+The generated data includes the active upload's cleaned columns, saved
+predictions (when they exist), KPI totals for detected numeric measures,
+time/category analysis when the necessary columns exist, and
+prediction-versus-actual data when actual matching values exist. The Excel
+download contains those same data-driven tables plus an Excel dashboard.
 
 ## 5. Technical limitation
 
@@ -90,9 +93,12 @@ supported solution.
 ## 7. Practical automation
 
 1. Author `finsightai.pbix` once in Power BI Desktop with tables and visuals
-  for the canonical columns produced by FinSight AI.
+  for the columns/measures you want to support. The Flask export itself is
+  dataset-agnostic; the PBIX visual layout is still authored by you.
 2. Configure its queries to read `data/financial_data.csv`,
-  `data/predictions.csv`, and the generated analysis CSV files.
+  `data/predictions.csv`, and the generated analysis CSV files. The first file
+  contains the current upload's cleaned columns even though its legacy name is
+  retained for template compatibility.
 3. Flask creates a private data folder and copies that template once per
   `uploaded_file_id`.
 4. Flask generates dynamic analysis tables and prediction-vs-actual data;
