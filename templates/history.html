@@ -46,7 +46,7 @@
                                     {% elif h.event_type == 'signup' %}
                                         <span class="badge bg-success"><i class="fas fa-user-plus"></i> {{ t('history.event.signup') }}</span>
                                     {% else %}
-                                        <span class="badge bg-secondary">{{ h.event_type }}</span>
+                                        <span class="text-muted small">{{ h.event_type }}</span>
                                     {% endif %}
                                 </td>
                                 <td>{{ h.event_title }}</td>
@@ -55,7 +55,7 @@
                                         <i class="fas fa-file-csv text-primary"></i> {{ h.file_name }}
                                     {% elif h.prediction_type %}
                                         <span class="badge bg-info">{{ h.prediction_type }}</span>
-                                        {{ format_currency(h.predicted_value or 0) }}
+                                        {{ format_number(h.predicted_value) }}
                                         <small class="text-muted">({{ h.prediction_date }})</small>
                                     {% else %}
                                         <span class="text-muted">—</span>
@@ -67,7 +67,7 @@
                                     {% elif h.status == 'failed' %}
                                         <span class="badge bg-danger">{{ t('history.status.failed') }}</span>
                                     {% else %}
-                                        <span class="badge bg-secondary">{{ h.status }}</span>
+                                        <span class="text-muted small">{{ h.status }}</span>
                                     {% endif %}
                                 </td>
                                 <td><small class="text-muted">{{ h.created_at }}</small></td>

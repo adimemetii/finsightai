@@ -2,11 +2,12 @@
 {% block title %}{{ t('nav.predict') }} - FinSight AI{% endblock %}
 
 {% block content %}
+{% set primary_target = 'revenue' if 'revenue' in forecast_targets else (forecast_targets[0] if forecast_targets else '') %}
 <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
   <div>
     <div class="page-pretitle">FinSight AI</div>
     <h1 class="mb-1"><i class="fas fa-chart-line text-primary me-2"></i>Forecasting</h1>
-    <p class="text-muted mb-0">Choose a supported financial target and forecast one or more future periods from your uploaded history.</p>
+    <p class="text-muted mb-0">Choose a detected numeric measure and forecast one or more future periods from your uploaded history.</p>
   </div>
   <a href="{{ url_for('upload_file') }}" class="btn btn-primary"><i class="fas fa-cloud-arrow-up me-2"></i>{{ t('nav.upload') }}</a>
 </div>
@@ -26,23 +27,23 @@
 <div class="row g-4">
   <div class="col-xl-6">
     <section class="card h-100 border-0 shadow-sm">
-      <div class="card-header bg-gradient border-0"><h2 class="card-title mb-0"><i class="fas fa-arrow-trend-up text-success me-2"></i>Revenue Forecast</h2></div>
+      <div class="card-header bg-gradient border-0"><h2 class="card-title mb-0"><i class="fas fa-arrow-trend-up text-success me-2"></i>{{ primary_target|replace('_', ' ')|title }} Forecast</h2></div>
       <div class="card-body">
-        {% if 'revenue' in forecast_targets %}
-        <p class="text-muted">Forecast historical revenue using the model trained on this dataset.</p>
+        {% if primary_target %}
+        <p class="text-muted">Forecast this uploaded measure using the model trained on this dataset.</p>
         <div class="row g-3 align-items-end">
-          <div class="col-md-5"><label class="form-label" for="revenueDate">Forecast start date</label><input id="revenueDate" class="form-control" type="date" min="{{ risk_min_date }}" value="{{ risk_default_date }}"></div>
-          <div class="col-md-3"><label class="form-label" for="revenueHorizon">Periods</label><input id="revenueHorizon" class="form-control" type="number" min="1" max="24" value="3"></div>
-          <div class="col-md-4"><button id="revenueForecast" class="btn btn-primary w-100"><i class="fas fa-calculator me-2"></i>Generate</button></div>
+          <div class="col-md-5"><label class="form-label" for="primaryDate">Forecast start date</label><input id="primaryDate" class="form-control" type="date" min="{{ risk_min_date }}" value="{{ risk_default_date }}"></div>
+          <div class="col-md-3"><label class="form-label" for="primaryHorizon">Periods</label><input id="primaryHorizon" class="form-control" type="number" min="1" max="24" value="3"></div>
+          <div class="col-md-4"><button id="primaryForecast" class="btn btn-primary w-100"><i class="fas fa-calculator me-2"></i>Generate</button></div>
         </div>
-        <div id="revenueResult" class="mt-4" aria-live="polite"></div>
-        {% else %}<p class="text-muted mb-0">Revenue was not detected as a usable numeric field in this dataset.</p>{% endif %}
+        <div id="primaryResult" class="mt-4" aria-live="polite"></div>
+        {% else %}<p class="text-muted mb-0">No detected numeric field has enough dated observations for forecasting.</p>{% endif %}
       </div>
     </section>
   </div>
   <div class="col-xl-6">
     <section class="card h-100 border-0 shadow-sm">
-      <div class="card-header bg-gradient border-0"><h2 class="card-title mb-0"><i class="fas fa-wallet text-warning me-2"></i>Expense / Profit Forecast</h2></div>
+      <div class="card-header bg-gradient border-0"><h2 class="card-title mb-0"><i class="fas fa-chart-column text-warning me-2"></i>Other detected measures</h2></div>
       <div class="card-body">
         {% if expense_targets %}
         <p class="text-muted">Select the business measure you want to project.</p>
@@ -53,7 +54,7 @@
           <div class="col-md-2"><button id="expenseForecast" class="btn btn-primary w-100"><i class="fas fa-calculator"></i><span class="visually-hidden">Generate forecast</span></button></div>
         </div>
         <div id="expenseResult" class="mt-4" aria-live="polite"></div>
-        {% else %}<p class="text-muted mb-0">Expenses, Profit, and Amount were not detected as usable numeric fields.</p>{% endif %}
+        {% else %}<p class="text-muted mb-0">No additional detected numeric measure is forecastable.</p>{% endif %}
       </div>
     </section>
   </div>
@@ -74,7 +75,7 @@
 const predictionUrl = {{ url_for('predict')|tojson }};
 const riskUrl = {{ url_for('risk_classify')|tojson }};
 const escapeHtml = value => String(value ?? '').replace(/[&<>'\"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
-const money = value => new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(Number(value) || 0);
+const number = value => { const parsed = Number(value); return Number.isFinite(parsed) ? new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(parsed) : '—'; };
 const label = target => String(target).replaceAll('_', ' ').replace(/\b\w/g, char => char.toUpperCase());
 
 async function postJson(url, payload) {
@@ -93,9 +94,9 @@ async function postJson(url, payload) {
 
 function renderForecast(result, target, container) {
   const forecasts = result.forecasts || [];
-  const rows = forecasts.map(point => `<tr><td>${escapeHtml(point.date)}</td><td>${money(point.value)}</td><td>${point.actual === null || point.actual === undefined ? '—' : money(point.actual)}</td></tr>`).join('');
+  const rows = forecasts.map(point => `<tr><td>${escapeHtml(point.date)}</td><td>${number(point.value)}</td><td>${point.actual === null || point.actual === undefined ? '—' : number(point.actual)}</td></tr>`).join('');
   const chart = result.chart ? `<img class="img-fluid rounded border mt-3" src="data:image/png;base64,${result.chart}" alt="Historical and forecast ${escapeHtml(label(target))}">` : '';
-  container.innerHTML = `<div class="alert alert-success mb-3"><div class="d-flex justify-content-between"><strong>${escapeHtml(label(target))} forecast</strong><span>${escapeHtml(result.model?.name || 'Model')}</span></div><div class="h3 text-primary mt-2 mb-1">${money(result.prediction)}</div><small class="text-muted">First forecast value · estimated error ${money(result.model?.estimated_error || 0)}</small></div><div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>Forecast period</th><th>Predicted</th><th>Actual, if available</th></tr></thead><tbody>${rows}</tbody></table></div>${chart}`;
+  container.innerHTML = `<div class="alert alert-success mb-3"><div class="d-flex justify-content-between"><strong>${escapeHtml(label(target))} forecast</strong><span>${escapeHtml(result.model?.name || 'Model')}</span></div><div class="h3 text-primary mt-2 mb-1">${number(result.prediction)}</div><small class="text-muted">First forecast value · estimated error ${number(result.model?.estimated_error)}</small></div><div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>Forecast period</th><th>Predicted</th><th>Actual, if available</th></tr></thead><tbody>${rows}</tbody></table></div>${chart}`;
 }
 
 async function requestForecast(target, dateId, horizonId, resultId, button) {
@@ -113,8 +114,9 @@ async function requestForecast(target, dateId, horizonId, resultId, button) {
   } finally { button.disabled = false; }
 }
 
-const revenueButton = document.getElementById('revenueForecast');
-if (revenueButton) revenueButton.addEventListener('click', () => requestForecast('revenue', 'revenueDate', 'revenueHorizon', 'revenueResult', revenueButton));
+const primaryTarget = {{ primary_target|tojson }};
+const primaryButton = document.getElementById('primaryForecast');
+if (primaryButton) primaryButton.addEventListener('click', () => requestForecast(primaryTarget, 'primaryDate', 'primaryHorizon', 'primaryResult', primaryButton));
 const expenseButton = document.getElementById('expenseForecast');
 if (expenseButton) expenseButton.addEventListener('click', () => requestForecast(document.getElementById('expenseTarget').value, 'expenseDate', 'expenseHorizon', 'expenseResult', expenseButton));
 
@@ -124,7 +126,7 @@ if (riskButton) riskButton.addEventListener('click', async () => {
   try {
     const response = await postJson(riskUrl, { date: document.getElementById('riskDate').value });
     const data = response.data;
-    result.innerHTML = `<div class="alert alert-${data.risk_level === 'HIGH RISK' ? 'danger' : data.risk_level === 'MEDIUM RISK' ? 'warning' : 'success'} mb-0"><strong>${escapeHtml(data.risk_level)}</strong><p class="mb-1 mt-2">${escapeHtml(data.explanation)}</p><small>Revenue ${money(data.revenue)} · Expenses ${money(data.expenses)} · Profit ${money(data.profit)}</small></div>`;
+    result.innerHTML = `<div class="alert alert-${data.risk_level === 'HIGH RISK' ? 'danger' : data.risk_level === 'MEDIUM RISK' ? 'warning' : 'success'} mb-0"><strong>${escapeHtml(data.risk_level)}</strong><p class="mb-1 mt-2">${escapeHtml(data.explanation)}</p><small>Revenue ${number(data.revenue)} · Expenses ${number(data.expenses)} · Profit ${number(data.profit)}</small></div>`;
   } catch (error) { result.innerHTML = `<div class="alert alert-danger mb-0">${escapeHtml(error.response?.data?.error || 'Risk classification could not be completed.')}</div>`; }
   finally { riskButton.disabled = false; }
 });

@@ -24,12 +24,12 @@
     </div>
 </div>
 
-<!-- KPI cards -->
+<!-- Dataset facts: every value is calculated from the active upload. -->
 <div class="row g-3 mb-4">
     <div class="col-md-3 col-sm-6">
         <div class="card kpi-card border-0 shadow-sm h-100">
             <div class="card-body">
-                <small class="text-muted"><i class="fas fa-receipt me-1"></i> {{ t('dashboard.kpi.transactions') }}</small>
+                <small class="text-muted"><i class="fas fa-table me-1"></i> Rows</small>
                 <h3 class="mt-1 mb-0">{{ stats.rows }}</h3>
             </div>
         </div>
@@ -37,27 +37,21 @@
     <div class="col-md-3 col-sm-6">
         <div class="card kpi-card border-0 shadow-sm h-100">
             <div class="card-body">
-                <small class="text-muted"><i class="fas fa-arrow-trend-up me-1"></i> {{ t('dashboard.kpi.revenue_total') }}</small>
-                <h3 class="mt-1 mb-0 text-success">{{ format_currency(stats.revenue_total) }}</h3>
+                <small class="text-muted"><i class="fas fa-columns me-1"></i> Columns</small>
+                <h3 class="mt-1 mb-0">{{ stats.columns }}</h3>
             </div>
         </div>
     </div>
+    {% for metric in stats.numeric_metrics %}
     <div class="col-md-3 col-sm-6">
         <div class="card kpi-card border-0 shadow-sm h-100">
             <div class="card-body">
-                <small class="text-muted"><i class="fas fa-wallet me-1"></i> {{ t('dashboard.kpi.expenses_total') }}</small>
-                <h3 class="mt-1 mb-0 text-danger">{{ format_currency(stats.expenses_total) }}</h3>
+                <small class="text-muted"><i class="fas fa-chart-simple me-1"></i> {{ metric.label }} total</small>
+                <h3 class="mt-1 mb-0 text-primary">{{ format_number(metric.value) }}</h3>
             </div>
         </div>
     </div>
-    <div class="col-md-3 col-sm-6">
-        <div class="card kpi-card border-0 shadow-sm h-100">
-            <div class="card-body">
-                <small class="text-muted"><i class="fas fa-coins me-1"></i> {{ t('dashboard.kpi.profit_total') }}</small>
-                <h3 class="mt-1 mb-0 text-primary">{{ format_currency(stats.profit_total) }}</h3>
-            </div>
-        </div>
-    </div>
+    {% endfor %}
 </div>
 
 <div class="row g-3 mb-4">
@@ -101,7 +95,7 @@
                                         {% elif u.status == 'failed' %}
                                             <span class="badge bg-danger">{{ t('dashboard.status.failed') }}</span>
                                         {% else %}
-                                            <span class="badge bg-secondary">{{ u.status }}</span>
+                                            <span class="text-muted small">{{ u.status }}</span>
                                         {% endif %}
                                     </td>
                                     <td><small class="text-muted">{{ u.created_at }}</small></td>
@@ -140,7 +134,7 @@
                                 <tr>
                                     <td><span class="badge bg-primary">{% set mt_key = 'predict.model.' ~ p.prediction_type %}{{ t(mt_key) or p.prediction_type }}</span></td>
                                     <td>{{ p.prediction_date }}</td>
-                                    <td><strong>{{ format_currency(p.predicted_value) }}</strong></td>
+                                    <td><strong>{{ format_number(p.predicted_value) }}</strong></td>
                                     <td><small class="text-muted">{{ p.created_at }}</small></td>
                                 </tr>
                             {% endfor %}

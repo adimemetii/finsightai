@@ -72,6 +72,14 @@ def _as_text(series: pd.Series) -> pd.Series:
     return series.dropna().astype(str)
 
 
+def _unique_count(series: pd.Series) -> int:
+    """Count distinct values even when a JSON field contains lists/dicts."""
+    try:
+        return int(series.nunique(dropna=True))
+    except (TypeError, ValueError):
+        return int(series.astype("string").nunique(dropna=True))
+
+
 def _is_numeric(series: pd.Series) -> bool:
     s = _as_text(series).str.strip()
     if s.empty:
@@ -118,7 +126,7 @@ def detect_types(df: pd.DataFrame) -> Dict[str, str]:
         if nn == 0:
             result[name] = "empty"
             continue
-        if int(series.nunique(dropna=True)) <= 1:
+        if _unique_count(series) <= 1:
             result[name] = "constant"
             continue
         low = name.strip().lower()
@@ -131,7 +139,7 @@ def detect_types(df: pd.DataFrame) -> Dict[str, str]:
         if _is_date(series):
             result[name] = "date"
             continue
-        unique = int(series.nunique(dropna=True))
+        unique = _unique_count(series)
         ends_id = low.endswith("_id") or low.endswith("-id")
         has_id_word = any(w in low for w in ID_WORDS) and not any(
             w in low for w in REGRESSION_HINTS
@@ -245,10 +253,18 @@ def classification_targets(df: pd.DataFrame, types: Dict[str, str]) -> List[str]
         if _is_id_name(name):
             continue
         s = df[name].dropna()
-        classes = int(s.nunique(dropna=True))
+        try:
+            classes = _unique_count(s)
+            counts = s.value_counts()
+        except (TypeError, ValueError):
+            # JSON arrays/objects are valid categorical values but are not
+            # hashable in every pandas operation. Count their stable text
+            # form without modifying the uploaded frame.
+            comparable = s.astype("string")
+            classes = _unique_count(comparable)
+            counts = comparable.value_counts()
         if classes < 2 or classes > MAX_CATEGORY_CARDS:
             continue
-        counts = s.value_counts()
         if len(counts) < 2 or int(counts.min()) < 2:
             continue
         rank = _hint_rank(name, CLASSIFICATION_HINT)
@@ -376,18 +392,28 @@ def train_regression(df: pd.DataFrame, target: str,
     never raises.  When unsuitable it returns a friendly message instead of an
     invented value."""
     base: Dict[str, Any] = {"target": target, "kind": "regression"}
+    model_df = df
     date_col = _date_col(types)
     if date_col:
         try:
-            dates = pd.to_datetime(df[date_col], errors="coerce", format="mixed").dropna().sort_values()
+            parsed_dates = pd.to_datetime(df[date_col], errors="coerce", format="mixed")
+            # Invalid dates remain visible in the upload and analysis, but
+            # must not become artificial date features inside a time model.
+            model_df = df.loc[parsed_dates.notna()].copy()
+            dates = parsed_dates.loc[parsed_dates.notna()].sort_values()
+            if model_df.empty:
+                base["error"] = "No valid dated observations are available for this prediction."
+                return base
             step = float(dates.diff().dt.total_seconds().div(86400).dropna().median())
             base["forecast_step_days"] = step if step > 0 else 1.0
             base["forecast_frequency"] = "monthly" if step >= 25 else "weekly" if step >= 6 else "daily"
+            base["forecast_date_min"] = dates.min().date().isoformat()
+            base["forecast_date_max"] = dates.max().date().isoformat()
         except Exception:
             pass
     try:
-        X = _build_matrix(df, types, target)
-        y = pd.to_numeric(df[target], errors="coerce").dropna()
+        X = _build_matrix(model_df, types, target)
+        y = pd.to_numeric(model_df[target], errors="coerce").dropna()
         if len(y) < MIN_REGRESSION_ROWS:
             base["error"] = "Not enough suitable data for this prediction."
             return base
@@ -441,6 +467,11 @@ def train_regression(df: pd.DataFrame, target: str,
         "feature_names": list(X.columns),
         "rep_row": rep_row,
     })
+    if date_col:
+        base["date_feature_names"] = [
+            name for name in X.columns
+            if name in {date_col + "_days", date_col + "_year", date_col + "_month"}
+        ]
     return base
 def _regression_note(metrics: Dict[str, Any], y_train: pd.Series,
                      predicted: Any) -> str:
@@ -778,6 +809,9 @@ def predict_dynamic(section: Dict[str, Any]) -> Dict[str, Any]:
         frame = pd.DataFrame([rep_row], columns=section.get("feature_names") or [])
         if section.get("kind") == "regression":
             val = float(model.predict(frame)[0])
+            if not np.isfinite(val):
+                out["error"] = "Prediction could not be generated for this target."
+                return out
             out.update({"ok": True, "value": val, "label": _fmt_number(val),
                         "type": "regression"})
         else:
@@ -791,8 +825,15 @@ def predict_dynamic(section: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
-def predict_dynamic_periods(section: Dict[str, Any], periods: int) -> Dict[str, Any]:
-    """Generate successive forecasts using the detected date cadence."""
+def predict_dynamic_periods(section: Dict[str, Any], periods: int,
+                            start_date: Any = None) -> Dict[str, Any]:
+    """Generate successive forecasts using the uploaded date cadence.
+
+    When a start date is supplied, date-derived features are rebuilt for that
+    exact requested date. This keeps the dates shown in the UI aligned with
+    the model input instead of labeling a one-step forecast as an arbitrary
+    user-selected date.
+    """
     periods = max(1, min(int(periods or 1), 24))
     if section.get("kind") != "regression":
         return predict_dynamic(section)
@@ -801,16 +842,38 @@ def predict_dynamic_periods(section: Dict[str, Any], periods: int) -> Dict[str, 
         if model is None or not base:
             return {"ok": False, "error": "Prediction could not be generated for this target."}
         step = float(section.get("forecast_step_days") or 1)
-        date_features = [name for name in base if name.endswith("_days")]
+        date_features = section.get("date_feature_names") or []
         values = []
+        forecast_dates = []
+        requested_start = pd.Timestamp(start_date) if start_date else None
+        origin = pd.Timestamp(section.get("forecast_date_min")) if section.get("forecast_date_min") else None
+        if requested_start is not None and origin is None:
+            return {"ok": False, "error": "This dataset has no usable date history for forecasting."}
         for index in range(periods):
             row = dict(base)
-            for name in date_features:
-                row[name] = float(base[name]) + (step * index)
-            values.append(float(model.predict(pd.DataFrame([row], columns=section.get("feature_names") or []))[0]))
+            if requested_start is not None:
+                current = requested_start + pd.Timedelta(days=step * index)
+                forecast_dates.append(current.date().isoformat())
+                for name in date_features:
+                    row[name] = float((current - origin).total_seconds() / 86400)
+                for name in date_features:
+                    if name.endswith("_year"):
+                        row[name] = float(current.year)
+                    elif name.endswith("_month"):
+                        row[name] = float(current.month)
+            else:
+                for name in date_features:
+                    row[name] = float(base[name]) + (step * index)
+            predicted = float(model.predict(
+                pd.DataFrame([row], columns=section.get("feature_names") or [])
+            )[0])
+            if not np.isfinite(predicted):
+                return {"ok": False, "error": "Prediction could not be generated for this target."}
+            values.append(predicted)
         return {"ok": True, "type": "regression", "values": values,
                 "value": values[-1], "label": _fmt_number(values[-1]),
-                "frequency": section.get("forecast_frequency", "period")}
+                "frequency": section.get("forecast_frequency", "period"),
+                "dates": forecast_dates}
     except Exception:
         return {"ok": False, "error": "Prediction could not be generated for this target."}
 
