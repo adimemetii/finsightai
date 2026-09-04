@@ -37,7 +37,7 @@
 </div>
 
 <div class="row g-4">
-    {% if has_trend %}<div class="col-xl-8"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0"><h5 class="mb-0"><i class="fas fa-chart-area"></i> {{ t('analytics.trend') }}</h5></div><div class="card-body"><canvas id="trendChart"></canvas></div></div></div>{% endif %}
+    {% if has_trend %}<div class="col-xl-8"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0"><h5 class="mb-0"><i class="fas fa-chart-area"></i> Area trend</h5></div><div class="card-body"><canvas id="areaChart" aria-label="Area chart based on uploaded data"></canvas></div></div></div>{% endif %}
     {% if has_categories %}<div class="col-xl-4"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0"><h5 class="mb-0"><i class="fas fa-chart-pie"></i> {{ category_metric_label }} by {{ category_label }}</h5></div><div class="card-body"><canvas id="categoryChart"></canvas></div></div></div>{% endif %}
     {% if has_totals %}<div class="col-xl-6"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0"><h5 class="mb-0"><i class="fas fa-chart-column"></i> {{ t('analytics.totals') }}</h5></div><div class="card-body"><canvas id="totalsChart"></canvas></div></div></div>{% endif %}
     {% if has_cities %}<div class="col-xl-6"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0"><h5 class="mb-0"><i class="fas fa-city"></i> {{ t('analytics.city') }}</h5></div><div class="card-body p-2"><div id="cityMap"></div></div></div></div>{% endif %}
@@ -75,10 +75,10 @@ const chartDataset = trendKeys.map((key, i) => ({
     data: monthly.map(row => row[key] !== undefined && row[key] !== null ? row[key] : null),
     borderColor: trendColors[i % trendColors.length],
     backgroundColor: trendColors[i % trendColors.length] + '22',
-    fill: true, tension: .35
+    fill: 'origin', tension: .35
 }));
 
-{% if has_trend %}new Chart(document.getElementById('trendChart'), {
+{% if has_trend %}new Chart(document.getElementById('areaChart'), {
     type: 'line',
     data: { labels: monthly.map(row => row.period), datasets: chartDataset },
     options: {responsive: true, maintainAspectRatio: false, interaction: {intersect: false, mode: 'index'}, scales: {y: {ticks: {callback: number}, grid: {color: 'rgba(255,255,255,.08)'}}, x: {grid: {display: false}}}}
