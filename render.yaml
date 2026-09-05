@@ -2,6 +2,8 @@ services:
   - type: web
     name: finsight-ai
     runtime: python
+    branch: main
+    autoDeploy: true
     buildCommand: pip install -r requirements.txt
     # The current session cache is process-local; one worker keeps the demo
     # flow consistent while datasets remain durable in the database.
