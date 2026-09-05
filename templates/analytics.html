@@ -36,6 +36,36 @@
     {% endfor %}
 </div>
 
+{% if numeric_summary or categorical_summary %}
+<div class="row g-4 mb-4">
+  {% if numeric_summary %}
+  <div class="col-xl-7">
+    <section class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-gradient border-0"><h2 class="h5 mb-0"><i class="fas fa-calculator me-2"></i>Numeric summary</h2></div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead><tr><th>Measure</th><th>Count</th><th>Mean</th><th>Median</th><th>Min</th><th>Max</th><th>Std. dev.</th><th>Sum</th></tr></thead>
+          <tbody>{% for item in numeric_summary %}<tr><td><strong>{{ item.column }}</strong></td><td>{{ item.count }}</td><td>{{ format_number(item.mean) }}</td><td>{{ format_number(item.median) }}</td><td>{{ format_number(item.min) }}</td><td>{{ format_number(item.max) }}</td><td>{{ format_number(item.std) }}</td><td>{{ format_number(item.sum) }}</td></tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+  {% endif %}
+  {% if categorical_summary %}
+  <div class="col-xl-5">
+    <section class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-gradient border-0"><h2 class="h5 mb-0"><i class="fas fa-list me-2"></i>Category counts</h2></div>
+      <div class="card-body">
+        {% for item in categorical_summary[:4] %}
+        <div class="mb-3{% if not loop.last %} border-bottom pb-3{% endif %}"><div class="d-flex justify-content-between"><strong>{{ item.column }}</strong><small class="text-muted">{{ item.unique }} unique</small></div><div class="small text-muted mt-1">{% for entry in item.top[:5] %}<span class="badge bg-primary me-1 mb-1">{{ entry.value }} · {{ entry.count }}</span>{% endfor %}</div></div>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
 <div class="row g-4">
     <div class="col-xl-8"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0 d-flex justify-content-between align-items-center"><h5 class="mb-0"><i class="fas fa-chart-area"></i> Area chart</h5>{% if has_area %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('download_analytics_visualization', chart_type='area') }}"><i class="fas fa-download"></i> PNG</a>{% endif %}</div><div class="card-body">{% if has_area %}<canvas id="areaChart" aria-label="Area chart based on uploaded data"></canvas>{% else %}<div class="alert alert-info mb-0">{{ area_message }}</div>{% endif %}</div></div></div>
     <div class="col-xl-4"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0 d-flex justify-content-between align-items-center"><h5 class="mb-0"><i class="fas fa-chart-pie"></i> Donut chart</h5>{% if has_categories %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('download_analytics_visualization', chart_type='donut') }}"><i class="fas fa-download"></i> PNG</a>{% endif %}</div><div class="card-body">{% if has_categories %}<p class="small text-muted">{{ category_metric_label }} by {{ category_label }}</p><canvas id="categoryChart"></canvas>{% else %}<div class="alert alert-info mb-0">{{ donut_message }}</div>{% endif %}</div></div></div>

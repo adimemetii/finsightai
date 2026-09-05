@@ -30,7 +30,13 @@ services:
         sync: false
       - key: DB_SSL_CA
         sync: false
+      - key: DB_CONNECT_TIMEOUT
+        value: "10"
       - key: MAX_CONTENT_LENGTH
         value: "16777216"
+      - key: MAX_DATA_COLUMNS
+        value: "200"
+      - key: MAX_DATA_ROWS
+        value: "1000000"
       - key: ALLOWED_EXTENSIONS
         value: csv,xlsx,xls,json

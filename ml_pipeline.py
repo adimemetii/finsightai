@@ -615,7 +615,7 @@ class MLPipeline:
             result['metrics'] = all_models.get(best_model_name, {})
             
         except Exception as e:
-            result['error'] = str(e)
+            result['error'] = "Regression training could not be completed for this dataset."
             logger.error(f"Regression training error: {e}\n{traceback.format_exc()}")
         
         return result
@@ -688,7 +688,7 @@ class MLPipeline:
             result['metrics'] = metrics
             return result
         except Exception as e:
-            result['error'] = str(e)
+            result['error'] = "Risk classification could not be completed for this dataset."
             logger.error(f"Rule-based risk training error: {e}\\n{traceback.format_exc()}")
             return result
         
@@ -731,7 +731,7 @@ class MLPipeline:
             
             if model is None or metadata is None:
                 logger.error(f"Model not found: {user_id}/{model_type}")
-                return None, {'error': f"Model not trained for {model_type}"}
+                return None, {'error': "A trained model is not available for this target."}
             
             features = metadata.get('features', [])
             missing = []
@@ -779,7 +779,7 @@ class MLPipeline:
         
         except Exception as e:
             logger.error(f"Prediction error: {e}")
-            return None, {'error': f"Prediction failed: {e}"}
+            return None, {'error': "Prediction could not be generated for this dataset."}
     
     def predict_risk(self, user_id: int, features_dict: Dict) -> Tuple[Optional[str], Optional[Dict]]:
         """Classify risk for given features."""
@@ -807,7 +807,7 @@ class MLPipeline:
             try:
                 proba = model.predict_proba(X)[0]
                 class_proba = dict(zip(model.classes_, proba))
-            except:
+            except (AttributeError, TypeError, ValueError):
                 class_proba = {}
             
             return risk_label, {
@@ -818,7 +818,7 @@ class MLPipeline:
         
         except Exception as e:
             logger.error(f"Risk prediction error: {e}")
-            return None, {'error': f"Risk prediction failed: {e}"}
+            return None, {'error': "Risk classification could not be completed for this dataset."}
 
 # ============================================================================
 # Convenience functions for backward compatibility

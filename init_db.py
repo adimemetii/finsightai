@@ -39,6 +39,13 @@ def _env(name: str, default: str = "") -> str:
     return os.environ.get(name, default).strip()
 
 
+def _int_env(name: str, default: int) -> int:
+    try:
+        return int(_env(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
 _DB_ENV_ALIASES = {
     "DB_HOST": ("DB_HOST", "MYSQL_HOST"),
     "DB_PORT": ("DB_PORT", "MYSQL_PORT"),
@@ -73,6 +80,7 @@ def _db_config() -> dict[str, object]:
         "port": port,
         "user": _db_env("DB_USER"),
         "password": _db_env("DB_PASSWORD"),
+        "connection_timeout": max(2, min(30, _int_env("DB_CONNECT_TIMEOUT", 10))),
         "ssl_verify_cert": True,
         "ssl_verify_identity": True,
     }

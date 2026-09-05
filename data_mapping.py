@@ -332,7 +332,13 @@ def detect_columns(df: pd.DataFrame) -> dict[str, Any]:
     if df is None:
         return {"columns": [], "fields": {}, "mapping": {}, "warnings": []}
 
-    raw_names = [str(column).strip() for column in df.columns]
+    # Pandas may preserve duplicate/blank headers from Excel and JSON.  Make
+    # the labels unique before returning them as mapping keys so a manual
+    # mapping can never silently point at the wrong duplicate column.
+    raw_names = _unique_names([
+        str(column).strip() or f"column_{index + 1}"
+        for index, column in enumerate(df.columns)
+    ])
     normalized_names = _unique_names([normalize_column_name(name) for name in raw_names])
     column_info: list[dict[str, Any]] = []
     for index, raw_name in enumerate(raw_names):
@@ -437,7 +443,10 @@ def apply_mapping(df: pd.DataFrame, mapping: dict[str, str] | None = None) -> pd
     if df is None:
         return pd.DataFrame()
     work = df.copy()
-    raw_names = [str(column).strip() for column in work.columns]
+    raw_names = _unique_names([
+        str(column).strip() or f"column_{index + 1}"
+        for index, column in enumerate(work.columns)
+    ])
     work.columns = raw_names
     mapping = mapping or {}
     unknown_fields = set(mapping) - set(FIELD_SPECS)
@@ -511,6 +520,15 @@ def clean_dataframe(df: pd.DataFrame, mapping: dict[str, str] | None = None) -> 
         raise ValueError("File is empty or has no data.")
 
     original_rows = int(len(df))
+    original_columns = int(len(df.columns))
+    try:
+        missing_values_detected = int(df.isna().sum().sum())
+    except (TypeError, ValueError):
+        missing_values_detected = 0
+    try:
+        duplicate_rows_detected = int(df.duplicated().sum())
+    except (TypeError, ValueError):
+        duplicate_rows_detected = int(df.astype("string").duplicated().sum())
     if mapping is None:
         mapping = detect_columns(df).get("mapping", {})
     work = apply_mapping(df, mapping)
@@ -533,7 +551,16 @@ def clean_dataframe(df: pd.DataFrame, mapping: dict[str, str] | None = None) -> 
     # Treat whitespace-only cells as empty before removing blank rows/columns.
     # This is especially important for Excel exports with formatting beyond
     # the actual data range.
-    work = work.replace(r"^\s*$", np.nan, regex=True)
+    try:
+        work = work.replace(r"^\s*$", np.nan, regex=True)
+    except (TypeError, ValueError):
+        # Nested JSON values can be unhashable or array-like.  Clean string
+        # cells one column at a time while retaining those valid structures.
+        for column in work.columns:
+            if pd.api.types.is_object_dtype(work[column]) or pd.api.types.is_string_dtype(work[column]):
+                work[column] = work[column].map(
+                    lambda value: np.nan if isinstance(value, str) and not value.strip() else value
+                )
     work = work.dropna(how="all").copy()
     blank_rows_removed = original_rows - int(len(work))
     work = work.dropna(axis=1, how="all").copy()
@@ -546,7 +573,10 @@ def clean_dataframe(df: pd.DataFrame, mapping: dict[str, str] | None = None) -> 
             work[column] = work[column].map(
                 lambda value: value.strip() if isinstance(value, str) else value
             )
-    work = work.replace([np.inf, -np.inf], np.nan)
+    try:
+        work = work.replace([np.inf, -np.inf], np.nan)
+    except (TypeError, ValueError):
+        pass
 
     numeric_invalid = 0
     invalid_dates = 0
@@ -676,12 +706,17 @@ def clean_dataframe(df: pd.DataFrame, mapping: dict[str, str] | None = None) -> 
 
     summary = {
         "original_rows": original_rows,
+        "original_columns": original_columns,
         "rows_after_cleaning": int(len(work)),
         "columns_after_cleaning": int(len(work.columns)),
         "blank_rows_removed": blank_rows_removed,
+        "empty_columns_removed": max(0, original_columns - int(len(work.columns))),
+        "duplicate_rows_detected": duplicate_rows_detected,
         "duplicates_removed": duplicates_removed,
         "invalid_dates": invalid_dates,
         "invalid_numeric_values": numeric_invalid,
+        "missing_values_detected": missing_values_detected,
+        "missing_values_handled": max(0, missing_before_fill - missing_values),
         "missing_values_filled": max(0, missing_before_fill - missing_values),
         "missing_values_remaining": missing_values,
         # Kept in the response for compatibility with existing clients.  It is
@@ -714,6 +749,8 @@ def profile_dataframe(df: pd.DataFrame, mapping: dict[str, str] | None = None) -
     preview = []
     for record in cleaned.head(8).to_dict(orient="records"):
         preview.append(json_safe_record(record))
+    warnings = list(detection["warnings"])
+    warnings.extend(getattr(df, "attrs", {}).get("finsight_ingest_warnings", []) or [])
     return {
         "rows": int(len(df)),
         "columns": int(len(df.columns)),
@@ -722,7 +759,7 @@ def profile_dataframe(df: pd.DataFrame, mapping: dict[str, str] | None = None) -
         "mapping": selected_mapping,
         "cleaning": cleaning,
         "preview": preview,
-        "warnings": detection["warnings"],
+        "warnings": warnings,
     }
 
 

@@ -111,6 +111,8 @@ def _target_ratio(series: pd.Series) -> float:
 # ------------------------------------------------------------------
 def inspect_dataset(df: pd.DataFrame) -> Dict[str, Any]:
     """Produce a full profile of an uploaded dataset (never crashes)."""
+    if not isinstance(df, pd.DataFrame):
+        df = pd.DataFrame()
     profile: Dict[str, Any] = {
         "rows": int(len(df)),
         "columns": list(df.columns.astype(str)),
@@ -138,7 +140,11 @@ def inspect_dataset(df: pd.DataFrame) -> Dict[str, Any]:
         profile["warning"] = "ml.error.insufficient_data"
         return profile
 
-    profile["duplicates"] = int(df.duplicated().sum())
+    try:
+        profile["duplicates"] = int(df.duplicated().sum())
+    except (TypeError, ValueError):
+        # Nested JSON values are valid upload data but are not always hashable.
+        profile["duplicates"] = int(df.astype("string").duplicated().sum())
 
     for raw_col in df.columns:
         col = str(raw_col)
@@ -151,7 +157,11 @@ def inspect_dataset(df: pd.DataFrame) -> Dict[str, Any]:
             profile["empty_cols"].append(col)
             profile["column_types"][col] = "empty"
             continue
-        if series.nunique(dropna=True) <= 1:
+        try:
+            unique_count = series.nunique(dropna=True)
+        except (TypeError, ValueError):
+            unique_count = series.astype("string").nunique(dropna=True)
+        if unique_count <= 1:
             profile["constant_cols"].append(col)
             profile["column_types"][col] = "constant"
             continue
@@ -167,7 +177,10 @@ def inspect_dataset(df: pd.DataFrame) -> Dict[str, Any]:
             profile["date_cols"].append(col)
             profile["column_types"][col] = "date"
             continue
-        cards = series.nunique(dropna=True)
+        try:
+            cards = series.nunique(dropna=True)
+        except (TypeError, ValueError):
+            cards = series.astype("string").nunique(dropna=True)
         if cards <= 1000:
             profile["categorical_cols"].append(col)
             profile["column_types"][col] = "categorical"
@@ -175,8 +188,7 @@ def inspect_dataset(df: pd.DataFrame) -> Dict[str, Any]:
             profile["invalid_cols"].append(col)
             profile["column_types"][col] = "invalid"
 
-    return profile
-# --- candidate targets: numeric columns with real variation ---
+    # --- candidate targets: numeric columns with real variation ---
     candidates: List[Dict[str, Any]] = []
     for col in profile["numeric_cols"]:
         series = pd.to_numeric(df[col], errors="coerce").dropna()

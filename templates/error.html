@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}{{ status_code }} - FinSight AI{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-lg-7 mx-auto text-center py-5">
+    <div class="page-pretitle">FinSight AI</div>
+    <h1 class="display-2 fw-bold text-primary mb-3">{{ status_code }}</h1>
+    <h2 class="mb-3">{{ error_title }}</h2>
+    <p class="lead text-muted mb-4">{{ error_message }}</p>
+    <a href="{{ url_for('index') }}" class="btn btn-primary">
+      <i class="fas fa-house me-2"></i>Return home
+    </a>
+  </div>
+</div>
+{% endblock %}

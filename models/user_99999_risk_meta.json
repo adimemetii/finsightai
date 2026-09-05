@@ -11,7 +11,7 @@
     "HIGH RISK": 43,
     "MEDIUM RISK": 3
   },
-  "training_date": "2026-08-28T02:42:55.675752",
+  "training_date": "2026-09-05T23:59:55.430765",
   "risk_thresholds": {
     "high_risk": "profit < 0 OR expenses > revenue",
     "medium_risk": "revenue > 0 AND profit_margin < 0.08",

@@ -508,11 +508,13 @@ def _regression_note(metrics: Dict[str, Any], y_train: pd.Series,
     return note
 
 
-def _class_feature_matrix(df: pd.DataFrame,
+def _class_feature_matrix(df: pd.DataFrame, target: str,
                           types: Dict[str, str]) -> pd.DataFrame:
     """Encoded numeric features for classification (label-encoded categoricals,
     numeric, boolean, and date-derived features)."""
-    return _build_matrix(df, types, target="__none__")
+    # The label must never be encoded as an input feature.  Doing so produces
+    # a deceptively perfect score and is a classic target-leakage failure.
+    return _build_matrix(df, types, target=target)
 
 
 def train_classifier(df: pd.DataFrame, target: str,
@@ -520,7 +522,7 @@ def train_classifier(df: pd.DataFrame, target: str,
     """Decision Tree Classifier for a categorical/bool target. Never raises."""
     base: Dict[str, Any] = {"target": target, "kind": "classification"}
     try:
-        X = _class_feature_matrix(df, types)
+        X = _class_feature_matrix(df, target, types)
         y = df[target].dropna().astype(str)
         if len(y) < MIN_ROWS:
             base["error"] = "Not enough suitable data for this classification."
@@ -551,8 +553,27 @@ def train_classifier(df: pd.DataFrame, target: str,
     metrics: Dict[str, Any] = {}
     if X_test is not None and len(X_test) > 0:
         try:
-            acc = accuracy_score(y_test, model.predict(X_test))
+            test_prediction = model.predict(X_test)
+            acc = accuracy_score(y_test, test_prediction)
             metrics["accuracy"] = float(acc)
+            metrics["precision_weighted"] = float(
+                precision_score(y_test, test_prediction, average="weighted", zero_division=0)
+            )
+            metrics["recall_weighted"] = float(
+                recall_score(y_test, test_prediction, average="weighted", zero_division=0)
+            )
+            metrics["f1_weighted"] = float(
+                f1_score(y_test, test_prediction, average="weighted", zero_division=0)
+            )
+            metrics["confusion_matrix"] = (
+                pd.crosstab(
+                    pd.Series(y_test, name="actual"),
+                    pd.Series(test_prediction, name="predicted"),
+                    dropna=False,
+                ).reindex(index=range(len(classes_sorted)), columns=range(len(classes_sorted)), fill_value=0)
+                .to_numpy(dtype=int)
+                .tolist()
+            )
         except Exception:
             metrics["accuracy"] = None
 

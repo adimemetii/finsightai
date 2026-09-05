@@ -12,6 +12,7 @@ Database init: python init_db.py
 from __future__ import annotations
 
 import io
+import csv
 import json
 import mimetypes
 import os
@@ -199,6 +200,7 @@ def _db_config() -> dict[str, object]:
         "user": _db_env("DB_USER"),
         "password": _db_env("DB_PASSWORD"),
         "database": _db_env("DB_NAME"),
+        "connection_timeout": max(2, min(30, _int_env("DB_CONNECT_TIMEOUT", 10))),
         "ssl_verify_cert": True,
         "ssl_verify_identity": True,
     }
@@ -215,10 +217,13 @@ POWERBI_ROOT = BASE_DIR / _env("POWERBI_ROOT", "users")
 POWERBI_ROOT.mkdir(exist_ok=True)
 POWERBI_TEMPLATE = BASE_DIR / _env("POWERBI_TEMPLATE", "finsightai.pbix")
 MAX_CONTENT_LENGTH = _int_env("MAX_CONTENT_LENGTH", 16 * 1024 * 1024)
+MAX_CONTENT_LENGTH = max(1 * 1024 * 1024, min(MAX_CONTENT_LENGTH, 64 * 1024 * 1024))
 ALLOWED_EXTENSIONS = {
     e.lower() for e in _env("ALLOWED_EXTENSIONS", "csv,xlsx,xls,json").split(",") if e
 } | {"csv", "xlsx", "xls", "json"}
-MAX_DATA_COLUMNS = _int_env("MAX_DATA_COLUMNS", 200)
+MAX_DATA_COLUMNS = max(1, min(_int_env("MAX_DATA_COLUMNS", 200), 1000))
+MAX_DATA_ROWS = max(1, min(_int_env("MAX_DATA_ROWS", 1_000_000), 2_000_000))
+MAX_MODEL_ROWS = max(100, min(_int_env("MAX_MODEL_ROWS", 10_000), 50_000))
 OPENROUTER_API_KEY = _env("OPENROUTER_API_KEY")
 OPENROUTER_MODEL = _env("OPENROUTER_MODEL", "openrouter/free")
 GROQ_TIMEOUT = max(10, min(120, _int_env("GROQ_TIMEOUT", 45)))
@@ -814,6 +819,8 @@ def login_required(view):
     @wraps(view)
     def wrapper(*args, **kwargs):
         if not _session_user_id():
+            if request.path.startswith("/api/") or request.is_json:
+                return jsonify({"error": "Please log in to continue."}), 401
             flash("Please log in to continue.", "warning")
             return redirect(url_for("login"))
         return view(*args, **kwargs)
@@ -924,6 +931,16 @@ def inject_security_context():
     return {"csrf_token": csrf_token, "format_number": _format_number}
 
 
+@app.after_request
+def add_security_headers(response):
+    """Add low-risk browser protections without blocking the existing CDN UI."""
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+    return response
+
+
 # =====================================================
 # Database initialization
 # =====================================================
@@ -933,14 +950,19 @@ def init_database() -> None:
         create_database_tables()
         print("[finsight] Database schema ready.")
     except mysql.connector.Error as err:
-        app.logger.error(
-            "Database schema initialization failed: %s: %s",
-            type(err).__name__,
-            err,
-            exc_info=(type(err), err, err.__traceback__),
+        # Startup must remain healthy while a managed database is restarting.
+        # The request-level handler below will return a safe 503 for DB-backed
+        # pages; the health endpoint itself does not depend on MySQL.
+        app.logger.warning(
+            "Database schema initialization skipped (%s, code=%s).",
+            type(err).__name__, getattr(err, "errno", "unknown"),
         )
     except (RuntimeError, ValueError) as err:
-        app.logger.error("Database schema configuration failed: %s", err)
+        app.logger.warning("Database schema initialization skipped (%s).", type(err).__name__)
+    except Exception as err:
+        # A driver/configuration edge case must not expose a traceback or stop
+        # Gunicorn from binding its health endpoint.
+        app.logger.warning("Database schema initialization skipped (%s).", type(err).__name__)
 
 
 # =====================================================
@@ -1004,47 +1026,164 @@ def _excel_first_row_is_data(frame: pd.DataFrame) -> bool:
 
 
 def _read_excel_upload(source: str | Path | io.BytesIO) -> pd.DataFrame:
-    """Read normal Excel headers while preserving headerless data exports."""
-    frame = pd.read_excel(source)
-    if not _excel_first_row_is_data(frame):
-        return frame
+    """Read the first non-empty Excel sheet safely.
+
+    Workbooks from exports often contain an empty cover sheet or omit headers.
+    The reader preserves the data while using neutral names for a genuinely
+    headerless sheet; it never guesses business meaning from column position.
+    """
+    workbook = pd.ExcelFile(source)
+    try:
+        for sheet_name in workbook.sheet_names:
+            frame = pd.read_excel(workbook, sheet_name=sheet_name)
+            if frame.empty or len(frame.columns) == 0:
+                continue
+            if _excel_first_row_is_data(frame):
+                frame = pd.read_excel(workbook, sheet_name=sheet_name, header=None)
+                frame.columns = [f"column_{index + 1}" for index in range(len(frame.columns))]
+                frame.attrs["finsight_headerless"] = True
+            frame.attrs["finsight_sheet_name"] = str(sheet_name)
+            return frame
+    finally:
+        workbook.close()
+    return pd.DataFrame()
+
+
+def _read_csv_upload(source: str | Path | io.BytesIO) -> pd.DataFrame:
+    """Read common CSV variants with bounded, recoverable parsing.
+
+    The standard-library reader handles quoted delimiters and lets us reject
+    rows with the wrong field count before pandas sees them.  This avoids the
+    pandas parser's ambiguous behavior of silently treating an extra field as
+    an index, while still preserving a mostly valid business export.
+    """
+    encodings = ("utf-8-sig", "utf-8", "cp1252", "latin-1")
+    last_error: Exception | None = None
+    for encoding in encodings:
+        try:
+            if hasattr(source, "seek"):
+                source.seek(0)
+                raw = source.read()
+            elif isinstance(source, (str, Path)):
+                raw = Path(source).read_bytes()
+            else:
+                raw = source
+            text = raw.decode(encoding) if isinstance(raw, bytes) else str(raw)
+            if not text.strip():
+                raise ValueError("CSV is empty or does not contain tabular data.")
+
+            delimiters: list[str] = []
+            try:
+                sniffed = csv.Sniffer().sniff(text[:65536], delimiters=",;\t|").delimiter
+                delimiters.append(sniffed)
+            except csv.Error:
+                pass
+            delimiters.extend(delimiter for delimiter in (",", ";", "\t", "|")
+                              if delimiter not in delimiters)
+
+            candidates: list[tuple[tuple[int, float, int, int], list[list[str]], int]] = []
+            for delimiter in delimiters:
+                try:
+                    rows = list(csv.reader(io.StringIO(text), delimiter=delimiter))
+                except csv.Error:
+                    continue
+                rows = [row for row in rows if any(str(cell).strip() for cell in row)]
+                if not rows or not rows[0]:
+                    continue
+                expected = len(rows[0])
+                if expected < 1:
+                    continue
+                malformed = sum(1 for row in rows[1:] if len(row) != expected)
+                valid_count = len(rows) - 1 - malformed
+                consistency = valid_count / max(1, len(rows) - 1)
+                # Prefer an actual multi-column table over a perfectly
+                # consistent one-column parse produced by the wrong delimiter.
+                score = (int(expected > 1), consistency, expected, valid_count)
+                candidates.append((score, rows, malformed))
+            if not candidates:
+                raise ValueError("The CSV could not be read. Check its delimiter and row structure.")
+
+            _, rows, malformed = max(candidates, key=lambda item: item[0])
+            header = rows[0]
+            valid_rows = [row for row in rows[1:] if len(row) == len(header)]
+            frame = pd.DataFrame(valid_rows, columns=header)
+            if malformed:
+                frame.attrs["finsight_ingest_warnings"] = [
+                    f"{malformed} malformed CSV row(s) were skipped while reading the file."
+                ]
+            return frame
+        except (csv.Error, UnicodeError, ValueError, OSError) as exc:
+            last_error = exc
+            continue
+    raise ValueError("The CSV could not be read. Check its delimiter, encoding, and row structure.") from last_error
+
+
+def _read_json_upload(source: str | Path | io.BytesIO) -> pd.DataFrame:
+    """Read record-style, column-style, nested, or newline-delimited JSON."""
     if hasattr(source, "seek"):
         source.seek(0)
-    frame = pd.read_excel(source, header=None)
-    frame.columns = [f"column_{index + 1}" for index in range(len(frame.columns))]
-    # Keep this small piece of provenance for the preview and cleaning report.
-    # Generic names are safer than guessing that an arbitrary numeric column is
-    # revenue, date, or another business field.
-    frame.attrs["finsight_headerless"] = True
-    return frame
+        raw = source.read()
+    elif isinstance(source, (str, Path)):
+        raw = Path(source).read_bytes()
+    else:
+        raw = source
+    if isinstance(raw, bytes):
+        text = None
+        for encoding in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+            try:
+                text = raw.decode(encoding)
+                break
+            except UnicodeDecodeError:
+                continue
+        if text is None:
+            raise ValueError("The JSON encoding is not supported.")
+    else:
+        text = str(raw)
+    text = text.strip()
+    if not text:
+        raise ValueError("JSON is empty or does not contain tabular data.")
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        # JSON Lines is a common export format even when the extension is
+        # simply .json. Parse each non-empty line as one record.
+        records = []
+        try:
+            records = [json.loads(line) for line in text.splitlines() if line.strip()]
+        except json.JSONDecodeError:
+            raise ValueError("The uploaded JSON is not valid JSON or JSON Lines.") from exc
+        if not records or any(not isinstance(record, dict) for record in records):
+            raise ValueError("The uploaded JSON structure could not be converted into a usable table.") from exc
+        payload = records
+    return profile_json_payload(payload)
+
+
+def _unique_upload_headers(frame: pd.DataFrame) -> pd.DataFrame:
+    """Normalize blank/duplicate source headers without altering raw bytes."""
+    if frame is None:
+        return pd.DataFrame()
+    work = frame.copy()
+    seen: dict[str, int] = {}
+    headers: list[str] = []
+    for index, column in enumerate(work.columns):
+        base = str(column).strip() or f"column_{index + 1}"
+        count = seen.get(base, 0)
+        headers.append(base if count == 0 else f"{base}_{count + 1}")
+        seen[base] = count + 1
+    work.columns = headers
+    work.attrs.update(getattr(frame, "attrs", {}))
+    return work
 
 
 def _read_upload_dataframe(source: str | Path | io.BytesIO, filename: str) -> pd.DataFrame:
     """Read one supported upload format into a bounded dataframe."""
     extension = Path(filename).suffix.lower()
     if extension == ".csv":
-        try:
-            frame = pd.read_csv(source)
-            if len(frame.columns) == 1:
-                # A semicolon-delimited export is common in European tools.
-                if hasattr(source, "seek"):
-                    source.seek(0)
-                frame = pd.read_csv(source, sep=None, engine="python")
-        except UnicodeDecodeError:
-            if hasattr(source, "seek"):
-                source.seek(0)
-            frame = pd.read_csv(source, encoding="latin-1", sep=None, engine="python")
+        frame = _read_csv_upload(source)
     elif extension in {".xlsx", ".xls"}:
         frame = _read_excel_upload(source)
     elif extension == ".json":
-        if hasattr(source, "seek"):
-            source.seek(0)
-        if isinstance(source, (str, Path)):
-            with open(source, "r", encoding="utf-8") as json_file:
-                payload = json.load(json_file)
-        else:
-            payload = json.load(source)
-        frame = profile_json_payload(payload)
+        frame = _read_json_upload(source)
     else:
         raise ValueError("File must be CSV, XLSX, XLS, or JSON.")
 
@@ -1052,9 +1191,27 @@ def _read_upload_dataframe(source: str | Path | io.BytesIO, filename: str) -> pd
         raise ValueError("File is empty or has no tabular data.")
     if len(frame.columns) > MAX_DATA_COLUMNS:
         raise ValueError(f"The file contains too many columns. Maximum allowed is {MAX_DATA_COLUMNS}.")
-    if len(frame) > 1_000_000:
-        raise ValueError("The file contains too many rows. Maximum allowed is 1,000,000.")
-    return frame
+    if len(frame) > MAX_DATA_ROWS:
+        raise ValueError(f"The file contains too many rows. Maximum allowed is {MAX_DATA_ROWS:,}.")
+    return _unique_upload_headers(frame)
+
+
+def _upload_error_message(exc: Exception) -> str:
+    """Convert parser/validation failures into safe, useful upload messages."""
+    generic = "The uploaded file could not be processed. Please check that it contains valid tabular data."
+    message = str(exc).strip()
+    if not message or len(message) > 240:
+        return generic
+    # Pandas and engine exceptions can include local paths, SQL-like details,
+    # or traceback fragments that must never be sent back to the browser.
+    if any(token in message for token in ("Traceback", "File \"", "\\", "/", "mysql", "SQL")):
+        return generic
+    safe_starts = (
+        "File must be", "File is empty", "JSON", "The uploaded JSON", "The JSON",
+        "The CSV", "The column mapping", "The file contains too many",
+        "No usable rows", "The workbook", "Unable to read",
+    )
+    return message if message.startswith(safe_starts) else generic
 
 
 def _mapping_from_request() -> dict[str, str]:
@@ -1571,6 +1728,7 @@ def _visualization_data(df: pd.DataFrame, types: dict[str, str] | None = None) -
         "distribution_data": [], "distribution_label": "Value",
         "distribution_message": "No numeric distribution is available.",
         "map_message": "No geographic data available for map visualization.",
+        "numeric_summary": [], "categorical_summary": [],
     }
     if df is None or df.empty:
         return empty
@@ -1585,6 +1743,19 @@ def _visualization_data(df: pd.DataFrame, types: dict[str, str] | None = None) -
             work[column] = values
             numeric_columns.append(str(column))
     empty["numeric_columns"] = numeric_columns
+    for column in numeric_columns:
+        values = pd.to_numeric(work[column], errors="coerce").replace(
+            [np.inf, -np.inf], np.nan
+        ).dropna()
+        if values.empty:
+            continue
+        empty["numeric_summary"].append({
+            "column": str(column), "count": int(values.count()),
+            "mean": float(values.mean()), "median": float(values.median()),
+            "min": float(values.min()), "max": float(values.max()),
+            "std": float(values.std(ddof=1)) if len(values) > 1 else 0.0,
+            "sum": float(values.sum()),
+        })
     if not numeric_columns:
         empty["area_message"] = "No suitable numeric data available for an area chart."
         empty["map_message"] = "A map needs a numeric measure in addition to geographic values."
@@ -1609,6 +1780,7 @@ def _visualization_data(df: pd.DataFrame, types: dict[str, str] | None = None) -
                 dimensions.append((rank, -unique_count, str(column)))
         dimensions.sort()
         dimension = dimensions[0][2] if dimensions else None
+        donut_categories = []
         if dimension:
             counted = work[dimension].map(_visual_text).value_counts().head(12)
             categories = [
@@ -1622,7 +1794,18 @@ def _visualization_data(df: pd.DataFrame, types: dict[str, str] | None = None) -
             empty["column_message"] = "" if categories else "No suitable categorical data available for a column chart."
             donut_categories = categories if 2 <= len(categories) <= 6 else []
             empty["categories"] = donut_categories
-            empty["donut_message"] = "" if donut_categories else "A donut chart needs 2–6 categorical parts."
+        empty["donut_message"] = "" if donut_categories else "A donut chart needs 2-6 categorical parts."
+        for column in work.columns:
+            if types.get(column) not in {"categorical", "text", "boolean"}:
+                continue
+            values = work[column].map(_visual_text)
+            counts = values.value_counts().head(10)
+            if not counts.empty:
+                empty["categorical_summary"].append({
+                    "column": str(column), "unique": int(values.nunique()),
+                    "top": [{"value": str(value), "count": int(count)}
+                            for value, count in counts.items()],
+                })
         return empty
 
     metric_priority = ("sales", "revenue", "income", "amount", "profit", "expense",
@@ -1681,6 +1864,18 @@ def _visualization_data(df: pd.DataFrame, types: dict[str, str] | None = None) -
         empty["categories"] = donut_categories
         empty["donut_message"] = "" if donut_categories else "A donut chart needs 2–6 non-negative parts."
         empty["column_message"] = "" if categories else "No suitable categorical data available for a column chart."
+
+    for column in work.columns:
+        if types.get(column) not in {"categorical", "text", "boolean"}:
+            continue
+        values = work[column].map(_visual_text)
+        counts = values.value_counts().head(10)
+        if not counts.empty:
+            empty["categorical_summary"].append({
+                "column": str(column), "unique": int(values.nunique()),
+                "top": [{"value": str(value), "count": int(count)}
+                        for value, count in counts.items()],
+            })
 
     date_column = _date_column_for(work, types)
     empty["date_column"] = date_column
@@ -1771,6 +1966,7 @@ def analytics():
         "has_area": False, "has_categories": False, "has_column": False,
         "has_totals": False, "has_distribution": False, "has_map": False, "has_cities": False,
         "category_metric_label": "Value", "generic_analytics": True,
+        "numeric_summary": [], "categorical_summary": [],
         "area_message": "No valid date/time column available for an area chart.",
         "donut_message": "No suitable categorical data available for a donut chart.",
         "column_message": "No suitable categorical data available for a column chart.",
@@ -1785,7 +1981,8 @@ def analytics():
         monthly=visual["area_data"], area_data=visual["area_data"],
         categories=visual["categories"], column_data=visual["column_data"],
         locations=visual["locations"], cities=visual["locations"], totals=visual["totals"],
-        distribution_data=visual["distribution_data"], distribution_label=visual["distribution_label"],
+         distribution_data=visual["distribution_data"], distribution_label=visual["distribution_label"],
+         numeric_summary=visual["numeric_summary"], categorical_summary=visual["categorical_summary"],
         generic_analytics=True, trend_keys=["value"] if visual["area_data"] else [],
         trend_labels=[str(visual["metric_column"]).replace("_", " ").title()] if visual["metric_column"] else [],
         category_label=visual["category_label"], category_metric_label=visual["category_metric_label"],
@@ -1933,8 +2130,8 @@ def download_analytics_visualization(chart_type: str):
     try:
         visual = _visualization_data(df)
         output = _visualization_png(visual, chart_type)
-    except (ValueError, TypeError, OSError) as exc:
-        return jsonify({"error": str(exc) or "This visualization is not available for the current dataset."}), 404
+    except (ValueError, TypeError, OSError):
+        return jsonify({"error": "This visualization is not available for the current dataset."}), 404
     return send_file(output, as_attachment=True,
                      download_name=f"finsight_{chart_type}_chart.png", mimetype="image/png")
 
@@ -1970,7 +2167,7 @@ def upload_preview():
         profile = profile_dataframe(frame, preview_mapping)
         return jsonify({"success": True, "profile": profile})
     except (ValueError, pd.errors.ParserError, OSError) as exc:
-        return jsonify({"error": str(exc) or "We could not read this file."}), 400
+        return jsonify({"error": _upload_error_message(exc)}), 400
     except Exception:
         app.logger.exception("Upload preview failed")
         return jsonify({"error": "We could not read this file. Check its format and try again."}), 400
@@ -2020,7 +2217,7 @@ def upload_file():
         except Exception as exc:
             add_history(user_id, company_id, "upload", safe_name, status="failed",
                         details=f"read error: {exc}")
-            return jsonify({"error": str(exc) or "We could not read this file. Check its format and try again."}), 400
+            return jsonify({"error": _upload_error_message(exc)}), 400
 
         mapping = _mapping_from_request()
         detection = detect_columns(raw_df)
@@ -2029,6 +2226,10 @@ def upload_file():
         cleaned_df, cleaning = clean_dataframe(raw_df, mapping)
         mapped_labels = {field: mapping.get(field) for field in FIELD_SPECS if mapping.get(field)}
         warnings = list(detection.get("warnings", []))
+        warnings.extend(getattr(raw_df, "attrs", {}).get("finsight_ingest_warnings", []) or [])
+        sheet_name = getattr(raw_df, "attrs", {}).get("finsight_sheet_name")
+        if sheet_name:
+            warnings.append(f"Data was read from the '{sheet_name}' worksheet.")
         recommended_missing = [
             FIELD_SPECS[field]["label"] for field in ("tx_date", "revenue")
             if field not in mapping
@@ -2175,8 +2376,13 @@ def upload_file():
             "rows_detected": int(len(raw_df)),
             "columns": int(len(raw_df.columns)),
             "duplicates_removed": cleaning["duplicates_removed"],
+            "duplicate_rows_detected": cleaning.get("duplicate_rows_detected", cleaning["duplicates_removed"]),
             "blank_rows_removed": cleaning["blank_rows_removed"],
+            "empty_columns_removed": cleaning.get("empty_columns_removed", 0),
+            "missing_values_detected": cleaning.get("missing_values_detected", 0),
+            "missing_values_handled": cleaning.get("missing_values_handled", cleaning.get("missing_values_filled", 0)),
             "missing_values_remaining": cleaning["missing_values_remaining"],
+            "invalid_numeric_values": cleaning.get("invalid_numeric_values", 0),
             "missing_values_filled": cleaning.get("missing_values_filled", 0),
             "invalid_dates": cleaning["invalid_dates"],
             "date_column": mapping.get("tx_date"),
@@ -2220,7 +2426,7 @@ def upload_file():
                           (file_id, user_id), commit=True)
             except Exception:
                 app.logger.exception("Could not mark invalid upload %s as failed", file_id)
-        return jsonify({"error": str(exc)}), 400
+        return jsonify({"error": _upload_error_message(exc)}), 400
     except Exception as exc:
         app.logger.exception("Upload processing failed for user %s", user_id)
         if file_id is not None:
@@ -2256,11 +2462,22 @@ def _train_models_for(user_id: int, df: pd.DataFrame) -> None:
     
     Still maintains session-based models for backward compatibility.
     """
-    if len(df) < 10:
+    if df is None or df.empty or len(df) < 10:
         models = get_models(user_id)
         for key in ("amount", "expenses", "revenue", "profit"):
             models[key] = None
         return
+
+    # Keep upload requests responsive for large, valid files. The dashboard,
+    # cleaned download, and durable row store retain every row; only model
+    # fitting is capped to a recent chronological window.
+    try:
+        if "tx_date" in df.columns:
+            df = df.sort_values("tx_date").tail(MAX_MODEL_ROWS).reset_index(drop=True)
+        else:
+            df = df.tail(MAX_MODEL_ROWS).reset_index(drop=True)
+    except (TypeError, ValueError):
+        df = df.tail(MAX_MODEL_ROWS).reset_index(drop=True)
 
     models = get_models(user_id)
     
@@ -2734,6 +2951,11 @@ def predict():
             target_date = pd.to_datetime(date_str).date()
         except Exception:
             return jsonify({"error": _message("api.error.predict_invalid_date")}), 400
+        valid_history_dates = pd.to_datetime(df[date_column], errors="coerce").dropna()
+        if valid_history_dates.empty or target_date <= valid_history_dates.max().date():
+            return jsonify({
+                "error": "Choose a forecast start date after the latest valid date in the uploaded history."
+            }), 400
         if len(str(model_type)) > 255:
             return jsonify({"error": "The selected column name is too long to store a prediction."}), 400
         result = universal_analysis.predict_dynamic_periods(
@@ -2788,9 +3010,9 @@ def predict():
         except mysql.connector.Error:
             app.logger.exception("Database failure while saving dynamic prediction for user %s", user_id)
             return jsonify({"error": "Prediction could not be saved because the database is unavailable. Please try again later."}), 503
-        except (TypeError, ValueError, OSError) as exc:
+        except (TypeError, ValueError, OSError):
             app.logger.exception("Dynamic prediction persistence failed for user %s", user_id)
-            return jsonify({"error": f"Prediction could not be saved for this dataset: {exc}"}), 422
+            return jsonify({"error": "Prediction could not be saved for this dataset. Please try again."}), 422
         if not prediction_ids:
             return jsonify({"error": "Prediction could not be saved for this dataset."}), 422
         try:
@@ -2856,6 +3078,11 @@ def predict():
     if model_type not in df.columns or pd.to_numeric(df[model_type], errors="coerce").notna().sum() < MIN_FORECAST_OBSERVATIONS:
         return jsonify({
             "error": f"The uploaded dataset does not contain at least {MIN_FORECAST_OBSERVATIONS} valid observations for '{model_type}'."
+        }), 400
+    valid_history_dates = pd.to_datetime(df["tx_date"], errors="coerce").dropna()
+    if valid_history_dates.empty or target_date <= valid_history_dates.max().date():
+        return jsonify({
+            "error": "Choose a forecast start date after the latest valid date in the uploaded history."
         }), 400
     # Models from a previously uploaded dataset can be absent after a restart
     # or after a validation fix. Rebuild them from the active upload instead
@@ -3859,17 +4086,48 @@ def uploaded_file(file_id: int):
 # =====================================================
 # Error handlers
 # =====================================================
+def _safe_error_response(code: int, message: str, *, title: str | None = None):
+    """Return a consistent API response or a safe HTML error page."""
+    json_paths = {"/upload", "/upload/preview", "/predict", "/risk-classify", "/powerbi/generate"}
+    if request.path.startswith("/api/") or request.is_json or request.path in json_paths:
+        return jsonify({"error": message, "status": code}), code
+    return render_template(
+        "error.html", status_code=code, error_title=title or f"Request error ({code})",
+        error_message=message,
+    ), code
+
+
+@app.errorhandler(400)
+def bad_request(_):
+    return _safe_error_response(400, "We could not understand that request. Please check the submitted data.", title="Bad request")
+
+
+@app.errorhandler(401)
+def unauthorized(_):
+    return _safe_error_response(401, "Please log in to continue.", title="Sign-in required")
+
+
+@app.errorhandler(403)
+def forbidden(_):
+    return _safe_error_response(403, "You do not have permission to access this resource.", title="Access denied")
+
+
+@app.errorhandler(422)
+def unprocessable_entity(_):
+    return _safe_error_response(422, "The submitted data could not be processed. Please review it and try again.", title="Unable to process request")
+
+
 @app.errorhandler(404)
 def not_found(_):
-    if request.path.startswith("/api/"):
-        return jsonify({"error": "Not found"}), 404
-    return render_template("404.html"), 404
+    return _safe_error_response(404, "The requested page or resource was not found.", title="Page not found")
 
 
 @app.errorhandler(413)
 def too_large(_):
     limit = round(MAX_CONTENT_LENGTH / (1024 * 1024), 2)
-    return jsonify({"error": f"Uploaded file is too large. Maximum size is {limit:g} MB."}), 413
+    return _safe_error_response(
+        413, f"Uploaded file is too large. Maximum size is {limit:g} MB.", title="File too large"
+    )
 
 
 @app.errorhandler(RuntimeError)
@@ -3906,9 +4164,7 @@ def database_unavailable(error):
 
 @app.errorhandler(500)
 def server_error(_):
-    if request.path.startswith("/api/"):
-        return jsonify({"error": "Internal server error"}), 500
-    return render_template("500.html"), 500
+    return _safe_error_response(500, "Something went wrong on our side. Please try again later.", title="Server error")
 
 
 # =====================================================

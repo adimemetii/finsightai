@@ -67,6 +67,26 @@
 </section>
 {% endif %}
 {% endif %}
+
+{% if analysis and analysis.sections %}
+<section class="card mt-4 border-0 shadow-sm">
+  <div class="card-header bg-gradient border-0"><h2 class="h5 mb-0"><i class="fas fa-microscope me-2"></i>Detected analysis models</h2></div>
+  <div class="card-body">
+    <p class="text-muted small">These results are based on the structure and values in the active upload. A classifier is shown only when a suitable categorical target was detected.</p>
+    <div class="row g-3">
+      {% for section in analysis.sections %}
+      <div class="col-md-6">
+        <div class="border rounded p-3 h-100">
+          <div class="d-flex justify-content-between gap-2"><strong>{{ section.target|replace('_', ' ')|title }}</strong><span class="badge bg-{{ 'primary' if section.kind == 'regression' else 'warning' }}">{{ section.kind|title }}</span></div>
+          {% if section.error %}<p class="text-muted small mt-2 mb-0">{{ section.error }}</p>{% else %}<div class="h5 text-primary mt-2 mb-1">{{ section.prediction_label }}</div><small class="text-muted">{{ section.model_name }}{% if section.metric_name and section.metric_value is not none %} · {{ section.metric_name }} {{ section.metric_value|round(2) }}{% endif %}</small>{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% if insight %}<div class="alert alert-info mt-3 mb-0"><i class="fas fa-lightbulb me-2"></i>{{ insight }}</div>{% endif %}
+  </div>
+</section>
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}
