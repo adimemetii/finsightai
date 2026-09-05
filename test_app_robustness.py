@@ -6,6 +6,7 @@ import io
 import json
 
 import pandas as pd
+from flask import render_template, session
 
 import app
 import universal_analysis as ua
@@ -65,6 +66,30 @@ def test_safe_http_errors() -> None:
     health = client.get("/healthz")
     assert health.status_code == 200
     assert health.headers["X-Content-Type-Options"] == "nosniff"
+
+
+def test_predict_template_renders_primary_target_in_script() -> None:
+    """The content and extra_js blocks must not rely on shared local scope."""
+    with app.app.test_request_context("/predict"):
+        session["user_id"] = 1
+        session["company_name"] = "Test Company"
+        session["user_name"] = "Test User"
+        html = render_template(
+            "predict.html",
+            has_data=True,
+            forecast_targets=["revenue", "expenses"],
+            expense_targets=["expenses"],
+            risk_min_date="2026-01-01",
+            risk_max_date="",
+            risk_default_date="2026-02-01",
+            risk_available=False,
+            analysis={},
+            insight="",
+            section_types={},
+            date_column="tx_date",
+            forecast_status={},
+        )
+    assert 'const primaryTarget = "revenue";' in html
 
 
 if __name__ == "__main__":

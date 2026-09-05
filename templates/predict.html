@@ -139,7 +139,9 @@ async function requestForecast(target, dateId, horizonId, resultId, button) {
   } finally { button.disabled = false; }
 }
 
-const primaryTarget = {{ primary_target|tojson }};
+// `primary_target` is assigned inside the content block, while this script
+// lives in a separate Jinja block and cannot see that local variable.
+const primaryTarget = {{ ('revenue' if 'revenue' in forecast_targets else (forecast_targets[0] if forecast_targets else ''))|tojson }};
 const primaryButton = document.getElementById('primaryForecast');
 if (primaryButton) primaryButton.addEventListener('click', () => requestForecast(primaryTarget, 'primaryDate', 'primaryHorizon', 'primaryResult', primaryButton));
 const expenseButton = document.getElementById('expenseForecast');
