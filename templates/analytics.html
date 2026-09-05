@@ -40,7 +40,8 @@
     <div class="col-xl-8"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0 d-flex justify-content-between align-items-center"><h5 class="mb-0"><i class="fas fa-chart-area"></i> Area chart</h5>{% if has_area %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('download_analytics_visualization', chart_type='area') }}"><i class="fas fa-download"></i> PNG</a>{% endif %}</div><div class="card-body">{% if has_area %}<canvas id="areaChart" aria-label="Area chart based on uploaded data"></canvas>{% else %}<div class="alert alert-info mb-0">{{ area_message }}</div>{% endif %}</div></div></div>
     <div class="col-xl-4"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0 d-flex justify-content-between align-items-center"><h5 class="mb-0"><i class="fas fa-chart-pie"></i> Donut chart</h5>{% if has_categories %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('download_analytics_visualization', chart_type='donut') }}"><i class="fas fa-download"></i> PNG</a>{% endif %}</div><div class="card-body">{% if has_categories %}<p class="small text-muted">{{ category_metric_label }} by {{ category_label }}</p><canvas id="categoryChart"></canvas>{% else %}<div class="alert alert-info mb-0">{{ donut_message }}</div>{% endif %}</div></div></div>
     <div class="col-xl-6"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0 d-flex justify-content-between align-items-center"><h5 class="mb-0"><i class="fas fa-chart-column"></i> Column chart</h5>{% if has_column %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('download_analytics_visualization', chart_type='column') }}"><i class="fas fa-download"></i> PNG</a>{% endif %}</div><div class="card-body">{% if has_column %}<canvas id="columnChart"></canvas>{% else %}<div class="alert alert-info mb-0">{{ column_message }}</div>{% endif %}</div></div></div>
-    <div class="col-xl-6"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0 d-flex justify-content-between align-items-center"><h5 class="mb-0"><i class="fas fa-chart-simple"></i> {{ t('analytics.totals') }}</h5>{% if has_totals %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('download_analytics_visualization', chart_type='totals') }}"><i class="fas fa-download"></i> PNG</a>{% endif %}</div><div class="card-body">{% if has_totals %}<canvas id="totalsChart"></canvas>{% else %}<div class="alert alert-info mb-0">No numeric data available for a totals chart.</div>{% endif %}</div></div></div>
+    <div class="col-xl-6"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0 d-flex justify-content-between align-items-center"><h5 class="mb-0"><i class="fas fa-chart-simple"></i> {{ t('analytics.totals') }}</h5>{% if has_totals %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('download_analytics_visualization', chart_type='totals') }}"><i class="fas fa-download"></i> PNG</a>{% endif %}</div><div class="card-body">{% if has_totals %}<canvas id="totalsChart"></canvas>{% else %}<div class="alert alert-info mb-0">No additive numeric measures are available for a totals chart.</div>{% endif %}</div></div></div>
+    <div class="col-xl-6"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0 d-flex justify-content-between align-items-center"><h5 class="mb-0"><i class="fas fa-chart-bar"></i> Distribution of {{ distribution_label }}</h5>{% if has_distribution %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('download_analytics_visualization', chart_type='distribution') }}"><i class="fas fa-download"></i> PNG</a>{% endif %}</div><div class="card-body">{% if has_distribution %}<canvas id="distributionChart" aria-label="Distribution chart based on uploaded data"></canvas>{% else %}<div class="alert alert-info mb-0">{{ distribution_message }}</div>{% endif %}</div></div></div>
     <div class="col-12"><div class="card border-0 shadow-sm chart-panel"><div class="card-header bg-gradient border-0 d-flex justify-content-between align-items-center"><h5 class="mb-0"><i class="fas fa-map-location-dot"></i> Map chart</h5>{% if has_map %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('download_analytics_visualization', chart_type='map') }}"><i class="fas fa-download"></i> PNG</a>{% endif %}</div><div class="card-body p-2">{% if has_map %}<div id="cityMap" aria-label="Map chart based on uploaded geographic values"></div>{% else %}<div class="alert alert-info mb-0">{{ map_message }}</div>{% endif %}</div></div></div>
 </div>
 {% endif %}
@@ -56,6 +57,8 @@ const areaData = {{ area_data|tojson }};
 const categories = {{ categories|tojson }};
 const cities = {{ locations|tojson }};
 const totals = {{ totals|tojson }};
+const distributionData = {{ distribution_data|tojson }};
+const distributionLabel = {{ distribution_label|tojson }};
 const genericMode = {{ generic_analytics|tojson }};
 const trendKeys = {{ trend_keys|tojson }};
 const trendLabels = {{ trend_labels|tojson }};
@@ -102,6 +105,12 @@ const totalColors = ['#16a34a','#dc2626','#2563eb','#f59e0b','#7c3aed','#0891b2'
 {% if has_totals %}new Chart(document.getElementById('totalsChart'), {
     type: 'bar', data: {labels: totalLabels, datasets: [{label: T('analytics.chart.total_label', 'Total'), data: totalKeys.map(k => totals[k]), backgroundColor: totalColors.slice(0, totalKeys.length), borderRadius: 6}]},
     options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {display: false}}, scales: {y: {ticks: {callback: number}, grid: {color: 'rgba(255,255,255,.08)'}}, x: {grid: {display: false}}}}
+});{% endif %}
+
+{% if has_distribution %}new Chart(document.getElementById('distributionChart'), {
+    type: 'bar',
+    data: {labels: distributionData.map(row => row.range), datasets: [{label: distributionLabel, data: distributionData.map(row => row.value), backgroundColor: '#8cbcff', borderRadius: 6}]},
+    options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {display: false}, tooltip: {callbacks: {label: context => number(context.raw) + ' rows'}}}, scales: {y: {beginAtZero: true, ticks: {precision: 0}, grid: {color: 'rgba(255,255,255,.08)'}}, x: {grid: {display: false}}}}
 });{% endif %}
 
 {% if cities %}

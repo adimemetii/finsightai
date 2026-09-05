@@ -754,7 +754,12 @@ class MLPipeline:
             prediction = float(model.predict(X)[0])
             
             # Estimate uncertainty from test metrics
-            metrics = metadata.get('all_models', {}).get(metadata.get('best_model', {}), {})
+            all_model_metrics = metadata.get('all_models') or {}
+            best_model_key = metadata.get('best_model')
+            metrics = (
+                all_model_metrics.get(best_model_key, {})
+                if isinstance(all_model_metrics, dict) and best_model_key else {}
+            )
             test_rmse = metrics.get('test_rmse', 0)
             
             return prediction, {

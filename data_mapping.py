@@ -187,6 +187,19 @@ def _date_ratio(series: pd.Series, name: Any = None) -> float:
     if len(sample) < 2:
         return 0.0
     normalized = normalize_column_name(name) if name is not None else ""
+    # A numeric-looking measure is not a date just because pandas can parse a
+    # few values as years or timestamps. This matters for headerless Excel
+    # exports where the first row may contain values such as ``2 900`` and the
+    # column name is unavailable. Explicit date/period labels remain eligible
+    # for serial-date handling below.
+    explicit_date_name = normalized in {
+        "date", "transaction_date", "sale_date", "invoice_date", "order_date",
+        "created_at", "created_date", "timestamp", "time", "period", "datetime",
+        "date_time", "transaction_datetime", "order_datetime", "year",
+        "fiscal_year", "month", "month_number",
+    }
+    if not explicit_date_name and _numeric_ratio(series) >= 0.6:
+        return 0.0
     # Year and month are useful period columns even when spreadsheets store
     # them as numbers. They are only converted into a full date when the
     # cleaner has enough information to do so (see clean_dataframe).
@@ -222,8 +235,16 @@ def _parse_dates(series: pd.Series, column_name: Any = None) -> pd.Series:
         for index, value in parsed.items():
             try:
                 if pd.notna(value):
-                    result.at[index] = pd.Timestamp(value)
-            except (TypeError, ValueError, OverflowError, pd.errors.OutOfBoundsDatetime):
+                    timestamp = pd.Timestamp(value)
+                    # Pandas' datetime64[ns] result cannot store dates outside
+                    # its representable range. Check before assignment because
+                    # some pandas versions raise AssertionError here instead of
+                    # OutOfBoundsDatetime.
+                    if timestamp < pd.Timestamp.min or timestamp > pd.Timestamp.max:
+                        continue
+                    result.at[index] = timestamp
+            except (TypeError, ValueError, OverflowError, AssertionError,
+                    pd.errors.OutOfBoundsDatetime):
                 continue
 
     if pd.api.types.is_datetime64_any_dtype(series):
@@ -368,6 +389,11 @@ def detect_columns(df: pd.DataFrame) -> dict[str, Any]:
     fields: dict[str, dict[str, Any]] = {}
     mapping: dict[str, str] = {}
     warnings: list[str] = []
+    if bool(getattr(df, "attrs", {}).get("finsight_headerless")):
+        warnings.append(
+            "No header row was detected in this Excel file. Safe generic column "
+            "names were created; map business fields manually if forecasting needs them."
+        )
     for field in field_order:
         candidates = candidates_by_field[field]
         selected = None

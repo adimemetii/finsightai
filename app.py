@@ -956,21 +956,40 @@ def _excel_first_row_is_data(frame: pd.DataFrame) -> bool:
     if frame is None or frame.empty:
         return False
 
-    aliases = {
-        alias.casefold()
-        for spec in FIELD_SPECS.values()
-        for alias in spec.get("aliases", [])
-    }
-    header_names = {
-        re.sub(r"[^a-z0-9]+", "_", str(column).strip().casefold()).strip("_")
-        for column in frame.columns
-    }
-    if header_names & aliases:
-        return False
     header_values = pd.Series(list(frame.columns), dtype="string").str.strip()
     header_numeric = pd.to_numeric(header_values, errors="coerce").notna()
     header_blank = header_values.eq("") | header_values.str.match(r"^Unnamed", case=False, na=False)
     if not bool((header_numeric | header_blank).any()):
+        # A headerless sheet can also start with text-only values. If several
+        # apparent headers repeat in the following rows, they are data values
+        # rather than field names. Require a small signal so a normal header
+        # such as Status/Category is not reclassified by accident.
+        aliases = {
+            alias.casefold()
+            for spec in FIELD_SPECS.values()
+            for alias in spec.get("aliases", [])
+        }
+        header_names = {
+            re.sub(r"[^a-z0-9]+", "_", str(column).strip().casefold()).strip("_")
+            for column in frame.columns
+        }
+        alias_hits = len(header_names & aliases)
+        required_signal = max(2, (len(header_names) + 4) // 5)
+        if alias_hits >= required_signal:
+            return False
+        repeat_hits = 0
+        for column in frame.columns:
+            header = re.sub(r"[^a-z0-9]+", "_", str(column).strip().casefold()).strip("_")
+            if not header:
+                continue
+            values = {
+                re.sub(r"[^a-z0-9]+", "_", str(value).strip().casefold()).strip("_")
+                for value in frame[column].head(20).dropna()
+            }
+            if header in values:
+                repeat_hits += 1
+        if repeat_hits >= required_signal:
+            return True
         return False
 
     first_row = frame.iloc[0]
@@ -993,6 +1012,10 @@ def _read_excel_upload(source: str | Path | io.BytesIO) -> pd.DataFrame:
         source.seek(0)
     frame = pd.read_excel(source, header=None)
     frame.columns = [f"column_{index + 1}" for index in range(len(frame.columns))]
+    # Keep this small piece of provenance for the preview and cleaning report.
+    # Generic names are safer than guessing that an arbitrary numeric column is
+    # revenue, date, or another business field.
+    frame.attrs["finsight_headerless"] = True
     return frame
 
 
@@ -1452,10 +1475,13 @@ def dashboard():
                 continue
             values = pd.to_numeric(df[column], errors="coerce")
             if values.notna().any():
+                if _visual_identifier_like(str(column), values):
+                    continue
+                additive = _visual_additive_measure(str(column))
                 numeric_metrics.append({
                     "name": column,
-                    "label": str(column).replace("_", " ").title(),
-                    "value": float(values.sum()),
+                    "label": f"{str(column).replace('_', ' ').title()} {'total' if additive else 'average'}",
+                    "value": float(values.sum() if additive else values.mean()),
                 })
     date_range = ""
     if df is not None and not df.empty:
@@ -1500,6 +1526,38 @@ def _visual_text(value: object) -> str:
     return str(value).strip() or "Unspecified"
 
 
+def _visual_identifier_like(column: str, values: pd.Series) -> bool:
+    """Keep IDs and row counters out of measure charts when their values are numeric."""
+    normalized = re.sub(r"[^a-z0-9]+", "_", str(column).casefold()).strip("_")
+    identifier_name = (
+        normalized in {"id", "index", "row", "row_number", "number", "code", "key"}
+        or normalized.endswith(("_id", "_index", "_number", "_code", "_key"))
+    )
+    numeric = pd.to_numeric(values, errors="coerce").dropna()
+    if numeric.empty:
+        return False
+    unique_ratio = float(numeric.nunique() / len(numeric))
+    if identifier_name and unique_ratio >= 0.85:
+        return True
+    # Headerless spreadsheets often expose a generated ``column_N`` name. A
+    # nearly unique monotonic counter is still an identifier even without a
+    # semantic header; it should not become the default business measure.
+    if normalized.startswith("column_") and unique_ratio >= 0.9 and numeric.is_monotonic_increasing:
+        return True
+    return False
+
+
+def _visual_additive_measure(column: str) -> bool:
+    """Return whether summing a measure is a useful dashboard total."""
+    normalized = re.sub(r"[^a-z0-9]+", "_", str(column).casefold()).strip("_")
+    tokens = (
+        "revenue", "sales", "income", "amount", "expense", "expenses", "cost",
+        "profit", "price", "value", "quantity", "qty", "count", "orders",
+        "units", "volume", "spend", "budget", "balance",
+    )
+    return any(token in normalized for token in tokens)
+
+
 def _visualization_data(df: pd.DataFrame, types: dict[str, str] | None = None) -> dict[str, object]:
     """Select real dimensions/measures and aggregate only uploaded values."""
     empty = {
@@ -1510,6 +1568,8 @@ def _visualization_data(df: pd.DataFrame, types: dict[str, str] | None = None) -
         "area_message": "No valid date/time column available for an area chart.",
         "donut_message": "No suitable categorical data available for a donut chart.",
         "column_message": "No suitable categorical data available for a column chart.",
+        "distribution_data": [], "distribution_label": "Value",
+        "distribution_message": "No numeric distribution is available.",
         "map_message": "No geographic data available for map visualization.",
     }
     if df is None or df.empty:
@@ -1521,21 +1581,60 @@ def _visualization_data(df: pd.DataFrame, types: dict[str, str] | None = None) -
         if types.get(column) != "numeric":
             continue
         values = pd.to_numeric(work[column], errors="coerce")
-        if values.notna().any():
+        if values.notna().any() and not _visual_identifier_like(str(column), values):
             work[column] = values
             numeric_columns.append(str(column))
     empty["numeric_columns"] = numeric_columns
     if not numeric_columns:
         empty["area_message"] = "No suitable numeric data available for an area chart."
-        empty["map_message"] = "No suitable numeric data available for map visualization."
+        empty["map_message"] = "A map needs a numeric measure in addition to geographic values."
+        # Categorical-only uploads still have a useful visualization: count
+        # rows by the best available dimension instead of inventing a revenue
+        # or monetary measure.
+        dimensions = []
+        for column in work.columns:
+            kind = types.get(column)
+            if kind not in {"categorical", "text", "boolean"}:
+                continue
+            values = work[column].dropna()
+            try:
+                unique_count = int(values.astype("string").nunique())
+            except Exception:
+                unique_count = 0
+            if 2 <= unique_count <= 12:
+                normalized = str(column).casefold().replace(" ", "_")
+                rank = next((index for index, token in enumerate(
+                    ("category", "segment", "department", "product", "region", "country", "state", "city", "type")
+                ) if token in normalized), 99)
+                dimensions.append((rank, -unique_count, str(column)))
+        dimensions.sort()
+        dimension = dimensions[0][2] if dimensions else None
+        if dimension:
+            counted = work[dimension].map(_visual_text).value_counts().head(12)
+            categories = [
+                {"category": str(category), "value": int(value)}
+                for category, value in counted.items()
+            ]
+            empty["dimension_column"] = dimension
+            empty["category_label"] = str(dimension).replace("_", " ").title()
+            empty["category_metric_label"] = "Rows"
+            empty["column_data"] = categories
+            empty["column_message"] = "" if categories else "No suitable categorical data available for a column chart."
+            donut_categories = categories if 2 <= len(categories) <= 6 else []
+            empty["categories"] = donut_categories
+            empty["donut_message"] = "" if donut_categories else "A donut chart needs 2–6 categorical parts."
         return empty
 
-    metric_priority = ("revenue", "sales", "income", "amount", "profit", "expense",
+    metric_priority = ("sales", "revenue", "income", "amount", "profit", "expense",
                        "cost", "customers", "quantity", "count", "value")
-    def metric_rank(column: str) -> tuple[int, int, str]:
+    def metric_rank(column: str) -> tuple[int, int, float, int, str]:
         normalized = str(column).casefold().replace(" ", "_")
         rank = next((index for index, token in enumerate(metric_priority) if token in normalized), 999)
-        return rank, -int(work[column].notna().sum()), str(column)
+        values = pd.to_numeric(work[column], errors="coerce").dropna()
+        variation = float(values.std(ddof=0) / max(abs(float(values.mean())), 1e-9)) if len(values) > 1 else 0.0
+        # Prefer a field with enough distinct observations to chart a real
+        # measure; low-cardinality month/day/status codes are dimensions.
+        return rank, -int(values.nunique()), -variation, -int(values.notna().sum()), str(column)
     numeric_columns.sort(key=metric_rank)
     metric = numeric_columns[0]
     empty["metric_column"] = metric
@@ -1550,7 +1649,7 @@ def _visualization_data(df: pd.DataFrame, types: dict[str, str] | None = None) -
             unique_count = int(values.astype("string").nunique())
         except Exception:
             unique_count = 0
-        if unique_count == 0 or unique_count > 50:
+        if unique_count < 2 or unique_count > 12:
             continue
         normalized = str(column).casefold().replace(" ", "_")
         rank = next((index for index, token in enumerate(
@@ -1574,7 +1673,13 @@ def _visualization_data(df: pd.DataFrame, types: dict[str, str] | None = None) -
         empty["column_data"] = categories
         empty["category_label"] = str(dimension).replace("_", " ").title()
         empty["category_metric_label"] = f"Total {str(metric).replace('_', ' ').title()}"
-        empty["donut_message"] = "" if categories else "No suitable categorical data available for a donut chart."
+        donut_categories = (
+            categories if len(categories) <= 6
+            and all(float(row["value"]) >= 0 for row in categories)
+            and sum(float(row["value"]) for row in categories) > 0 else []
+        )
+        empty["categories"] = donut_categories
+        empty["donut_message"] = "" if donut_categories else "A donut chart needs 2–6 non-negative parts."
         empty["column_message"] = "" if categories else "No suitable categorical data available for a column chart."
 
     date_column = _date_column_for(work, types)
@@ -1622,8 +1727,31 @@ def _visualization_data(df: pd.DataFrame, types: dict[str, str] | None = None) -
         empty["locations"] = locations.to_dict("records")
         empty["map_message"] = "" if not locations.empty else "No geographic data available for map visualization."
 
-    empty["totals"] = {column: float(pd.to_numeric(work[column], errors="coerce").sum())
-                        for column in numeric_columns}
+    additive_columns = [column for column in numeric_columns if _visual_additive_measure(column)]
+    empty["totals"] = {
+        column: float(pd.to_numeric(work[column], errors="coerce").sum())
+        for column in additive_columns
+    }
+
+    # A histogram is more honest for generic measures such as age, score, or
+    # temperature than a bar chart of unrelated totals. It is shown only when
+    # the selected metric has enough variation to form meaningful bins.
+    metric_values = pd.to_numeric(work[metric], errors="coerce").replace([np.inf, -np.inf], np.nan).dropna()
+    if metric_values.nunique() >= 5:
+        try:
+            bin_count = max(4, min(8, int(np.ceil(np.sqrt(len(metric_values))))))
+            counts, edges = np.histogram(metric_values.to_numpy(dtype=float), bins=bin_count)
+            distribution = []
+            for index, count in enumerate(counts):
+                distribution.append({
+                    "range": f"{edges[index]:g}–{edges[index + 1]:g}",
+                    "value": int(count),
+                })
+            empty["distribution_data"] = distribution
+            empty["distribution_label"] = str(metric).replace("_", " ").title()
+            empty["distribution_message"] = ""
+        except (TypeError, ValueError):
+            pass
     return empty
 
 
@@ -1637,14 +1765,16 @@ def analytics():
     empty_context = {
         "company_name": session["company_name"], "has_data": False,
         "monthly": [], "area_data": [], "categories": [], "column_data": [],
-        "locations": [], "cities": [], "totals": {}, "trend_keys": [],
+        "locations": [], "cities": [], "totals": {}, "distribution_data": [],
+        "distribution_label": "Value", "trend_keys": [],
         "trend_labels": [], "category_label": "Category", "has_trend": False,
         "has_area": False, "has_categories": False, "has_column": False,
-        "has_totals": False, "has_map": False, "has_cities": False,
+        "has_totals": False, "has_distribution": False, "has_map": False, "has_cities": False,
         "category_metric_label": "Value", "generic_analytics": True,
         "area_message": "No valid date/time column available for an area chart.",
         "donut_message": "No suitable categorical data available for a donut chart.",
         "column_message": "No suitable categorical data available for a column chart.",
+        "distribution_message": "No numeric distribution is available.",
         "map_message": "No geographic data available for map visualization.",
     }
     if df is None or df.empty:
@@ -1655,14 +1785,17 @@ def analytics():
         monthly=visual["area_data"], area_data=visual["area_data"],
         categories=visual["categories"], column_data=visual["column_data"],
         locations=visual["locations"], cities=visual["locations"], totals=visual["totals"],
-        generic_analytics=True, trend_keys=[visual["metric_column"]] if visual["metric_column"] else [],
+        distribution_data=visual["distribution_data"], distribution_label=visual["distribution_label"],
+        generic_analytics=True, trend_keys=["value"] if visual["area_data"] else [],
         trend_labels=[str(visual["metric_column"]).replace("_", " ").title()] if visual["metric_column"] else [],
         category_label=visual["category_label"], category_metric_label=visual["category_metric_label"],
         has_trend=bool(visual["area_data"]), has_area=bool(visual["area_data"]),
         has_categories=bool(visual["categories"]), has_column=bool(visual["column_data"]),
-        has_totals=bool(visual["totals"]), has_map=bool(visual["locations"]),
+        has_totals=bool(visual["totals"]), has_distribution=bool(visual["distribution_data"]),
+        has_map=bool(visual["locations"]),
         has_cities=bool(visual["locations"]), area_message=visual["area_message"],
         donut_message=visual["donut_message"], column_message=visual["column_message"],
+        distribution_message=visual["distribution_message"],
         map_message=visual["map_message"],
     )
 
@@ -1740,6 +1873,16 @@ def _visualization_png(visual: dict[str, object], chart_type: str) -> io.BytesIO
                  [float(value) for value in totals.values()], color="#16a34a")
         axis.set_title("Uploaded numeric totals")
         axis.tick_params(axis="x", rotation=35)
+    elif chart_type == "distribution":
+        data = visual.get("distribution_data") or []
+        if not data:
+            raise ValueError(visual.get("distribution_message") or "No numeric distribution is available.")
+        axis.bar([str(row["range"]) for row in data],
+                 [int(row["value"]) for row in data], color="#8cbcff")
+        axis.set_title(f"Distribution of {visual.get('distribution_label', 'Value')}")
+        axis.set_xlabel(str(visual.get("distribution_label", "Value")))
+        axis.set_ylabel("Rows")
+        axis.tick_params(axis="x", rotation=35)
     elif chart_type == "map":
         locations = visual.get("locations") or []
         if not locations:
@@ -1781,7 +1924,7 @@ def _visualization_png(visual: dict[str, object], chart_type: str) -> io.BytesIO
 @login_required
 def download_analytics_visualization(chart_type: str):
     """Download a PNG rendered from the authenticated user's active upload."""
-    if chart_type not in {"donut", "column", "area", "map", "totals"}:
+    if chart_type not in {"donut", "column", "area", "map", "totals", "distribution"}:
         return jsonify({"error": "Unknown visualization."}), 404
     user_id = _session_user_id()
     _, df = _active_dataset_and_frame(user_id)
@@ -2550,7 +2693,11 @@ def predict():
     except (TypeError, ValueError):
         return jsonify({"error": "Forecast horizon must be a whole number between 1 and 24."}), 400
 
-    route_dataset_id, route_df = _active_dataset_and_frame(user_id)
+    try:
+        route_dataset_id, route_df = _active_dataset_and_frame(user_id)
+    except mysql.connector.Error:
+        app.logger.exception("Database failure while loading prediction dataset for user %s", user_id)
+        return jsonify({"error": "Forecasting is temporarily unavailable because the database could not be reached."}), 503
     route_analysis = _analysis_context(user_id) or {}
     route_types = route_analysis.get("types", {})
     route_date_column = _date_column_for(route_df, route_types)
@@ -2624,25 +2771,43 @@ def predict():
             "metrics": model.get("metrics") or {},
         }
         prediction_ids = []
-        for point in forecast_points:
-            actual_value = point["actual"]
-            prediction_id = run_query(
-                """INSERT INTO predictions
-                   (user_id, company_id, uploaded_file_id, prediction_type, prediction_date,
-                    actual_value, predicted_value, prediction_error, model_name)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-                (user_id, company_id, dataset_id, str(model_type), point["date"], actual_value,
-                 point["value"], round(actual_value - point["value"], 2)
-                 if actual_value is not None else None, prediction_info["model_name"]),
-                commit=True,
-            )["last_id"]
-            prediction_ids.append(prediction_id)
-        add_history(
-            user_id, company_id, "prediction",
-            f"{str(model_type).replace('_', ' ').title()} forecast from {target_date}",
-            prediction_id=prediction_ids[0], file_id=dataset_id, status="ok",
-            details=f"periods={forecast_periods}; first_value={forecast_points[0]['value']}",
-        )
+        try:
+            for point in forecast_points:
+                actual_value = point["actual"]
+                prediction_id = run_query(
+                    """INSERT INTO predictions
+                       (user_id, company_id, uploaded_file_id, prediction_type, prediction_date,
+                        actual_value, predicted_value, prediction_error, model_name)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                    (user_id, company_id, dataset_id, str(model_type), point["date"], actual_value,
+                     point["value"], round(actual_value - point["value"], 2)
+                     if actual_value is not None else None, prediction_info["model_name"]),
+                    commit=True,
+                )["last_id"]
+                prediction_ids.append(prediction_id)
+        except mysql.connector.Error:
+            app.logger.exception("Database failure while saving dynamic prediction for user %s", user_id)
+            return jsonify({"error": "Prediction could not be saved because the database is unavailable. Please try again later."}), 503
+        except (TypeError, ValueError, OSError) as exc:
+            app.logger.exception("Dynamic prediction persistence failed for user %s", user_id)
+            return jsonify({"error": f"Prediction could not be saved for this dataset: {exc}"}), 422
+        if not prediction_ids:
+            return jsonify({"error": "Prediction could not be saved for this dataset."}), 422
+        try:
+            add_history(
+                user_id, company_id, "prediction",
+                f"{str(model_type).replace('_', ' ').title()} forecast from {target_date}",
+                prediction_id=prediction_ids[0], file_id=dataset_id, status="ok",
+                details=f"periods={forecast_periods}; first_value={forecast_points[0]['value']}",
+            )
+        except mysql.connector.Error:
+            # A prediction has already been saved. Keep it usable and surface a
+            # database status instead of converting the successful forecast to a
+            # generic Flask 500 page.
+            app.logger.exception("Database failure while recording dynamic prediction history")
+            return jsonify({"error": "Prediction was generated, but its history could not be saved. Please try again later."}), 503
+        except Exception:
+            app.logger.exception("Could not record dynamic prediction history")
         try:
             _generate_powerbi_resources(user_id, company_id, session["company_name"], dataset_id)
         except Exception as exc:
@@ -2674,7 +2839,11 @@ def predict():
     except Exception:
         return jsonify({"error": _message("api.error.predict_invalid_date")}), 400
 
-    dataset_id, df = _active_dataset_and_frame(user_id)
+    try:
+        dataset_id, df = _active_dataset_and_frame(user_id)
+    except mysql.connector.Error:
+        app.logger.exception("Database failure while loading legacy prediction dataset for user %s", user_id)
+        return jsonify({"error": "Forecasting is temporarily unavailable because the database could not be reached."}), 503
     models = get_models(user_id)
     model_info = models.get(model_type)
 
@@ -2692,13 +2861,17 @@ def predict():
     # or after a validation fix. Rebuild them from the active upload instead
     # of incorrectly asking the user to upload the same file again.
     if model_info is None:
-        training_df = df.copy()
-        training_df["tx_date"] = pd.to_datetime(training_df["tx_date"], errors="coerce")
-        training_df = training_df.dropna(subset=["tx_date"])
-        training_df["Date_Number"] = (training_df["tx_date"] - training_df["tx_date"].min()).dt.days
-        training_df["Month"] = training_df["tx_date"].dt.month
-        training_df["Day_of_Week"] = training_df["tx_date"].dt.dayofweek
-        _train_models_for(user_id, training_df)
+        try:
+            training_df = df.copy()
+            training_df["tx_date"] = pd.to_datetime(training_df["tx_date"], errors="coerce")
+            training_df = training_df.dropna(subset=["tx_date"])
+            training_df["Date_Number"] = (training_df["tx_date"] - training_df["tx_date"].min()).dt.days
+            training_df["Month"] = training_df["tx_date"].dt.month
+            training_df["Day_of_Week"] = training_df["tx_date"].dt.dayofweek
+            _train_models_for(user_id, training_df)
+        except Exception:
+            app.logger.exception("Could not rebuild legacy forecast models for user %s", user_id)
+            return jsonify({"error": "Forecasting could not prepare a model for this dataset."}), 422
         models = get_models(user_id)
         model_info = models.get(model_type)
     if model_info is None:
@@ -3161,7 +3334,7 @@ def _dynamic_dashboard_download(user_id: int, company_name: str, dataset_id: int
         dashboard["A1"].font = Font(size=18, bold=True, color="FFFFFF")
         dashboard["A1"].fill = PatternFill("solid", fgColor="17324D")
         dashboard.merge_cells("A1:H1")
-        dashboard["A2"] = "Generated from the uploaded dataset and any predictions saved for it."
+        dashboard["A2"] = "Generated from the uploaded dataset."
         dashboard["A2"].font = Font(italic=True, color="5B6B7A")
         dashboard.merge_cells("A2:H2")
 
@@ -3170,14 +3343,14 @@ def _dynamic_dashboard_download(user_id: int, company_name: str, dataset_id: int
             values = kpi_frame.iloc[0].to_dict()
             row = 4
             for name, value in values.items():
-                if name in {"Company", "Exported_At"} or value is None:
+                if name in {"Company", "Exported_At", "Predictions"} or value is None:
                     continue
                 dashboard.cell(row=row, column=1).value = str(name).replace("_", " ").title()
                 dashboard.cell(row=row, column=2).value = value
                 row += 1
 
         for sheet_name, frame in frames.items():
-            if sheet_name == "README":
+            if sheet_name in {"README", "Predictions", "Prediction_vs_Actual"}:
                 continue
             _write_export_sheet(writer, sheet_name, frame)
 
@@ -3205,22 +3378,6 @@ def _dynamic_dashboard_download(user_id: int, company_name: str, dataset_id: int
                                      max_row=len(category_frame) + 1), titles_from_data=True)
             chart.set_categories(Reference(sheet, min_col=1, min_row=2, max_row=len(category_frame) + 1))
             dashboard.add_chart(chart, "D20")
-
-        predictions = frames.get("Predictions", pd.DataFrame())
-        if not predictions.empty and {"Prediction_Date", "Predicted_Value"}.issubset(predictions.columns):
-            sheet = writer.book["Predictions"]
-            chart = LineChart()
-            chart.title = "Saved predictions"
-            chart.y_axis.title = "Predicted value"
-            chart.x_axis.title = "Prediction date"
-            chart.height, chart.width = 8, 15
-            value_column = list(predictions.columns).index("Predicted_Value") + 1
-            date_column = list(predictions.columns).index("Prediction_Date") + 1
-            chart.add_data(Reference(sheet, min_col=value_column, max_col=value_column,
-                                     min_row=1, max_row=len(predictions) + 1), titles_from_data=True)
-            chart.set_categories(Reference(sheet, min_col=date_column, min_row=2,
-                                           max_row=len(predictions) + 1))
-            dashboard.add_chart(chart, "D36")
 
         for column in range(1, 15):
             dashboard.column_dimensions[chr(64 + column)].width = 16
@@ -3263,8 +3420,8 @@ def _raw_upload_frame(upload: dict) -> pd.DataFrame:
 @app.route("/powerbi/download-excel/<export_type>")
 @login_required
 def download_powerbi_excel(export_type: str):
-    """Download raw, cleaned, or prediction data for only the active user/upload."""
-    if export_type not in {"raw", "cleaned", "predictions", "dashboard"}:
+    """Download raw, cleaned, or dashboard data for only the active upload."""
+    if export_type not in {"raw", "cleaned", "dashboard"}:
         return jsonify({"error": "Unknown Power BI export."}), 404
 
     user_id = _session_user_id()
@@ -3304,49 +3461,7 @@ def download_powerbi_excel(export_type: str):
                 return jsonify({"error": "Cleaned data does not exist for the current dataset."}), 404
             return _excel_download(cleaned, "finsight_cleaned_data.xlsx")
 
-        prediction_rows = run_query(
-            """SELECT prediction_id AS Prediction_ID, prediction_type AS Prediction_Type,
-                      prediction_date AS Prediction_Date, actual_value AS Actual_Value,
-                      predicted_value AS Predicted_Value, prediction_error AS Prediction_Error,
-                      model_name AS Model, created_at AS Created_At
-               FROM predictions
-               WHERE user_id=%s AND uploaded_file_id=%s
-               ORDER BY prediction_date, prediction_id""",
-            (user_id, dataset_id), fetchall=True,
-        )["rows"] or []
-        if not prediction_rows:
-            return jsonify({"error": "No predictions exist for the current dataset yet."}), 404
-        # Keep the actual target name and model output; do not pivot into a
-        # financial-only schema for arbitrary datasets.
-        predictions = pd.DataFrame(prediction_rows)
-        metric_lookup: dict[str, dict[str, object]] = {}
-        analysis_state = session_data.get(user_id, {}).get("analysis", {})
-        for section in analysis_state.get("sections", []) if isinstance(analysis_state, dict) else []:
-            if section.get("kind") == "regression" and not section.get("error"):
-                metric_lookup[str(section.get("target"))] = section.get("metrics") or {}
-        for target, model_info in get_models(user_id).items():
-            if target not in metric_lookup and isinstance(model_info, dict):
-                metric_lookup[target] = model_info.get("metrics") or {}
-        for output_name, metric_names in {
-            "MAE": ("mae", "test_mae"), "MSE": ("mse", "test_mse"),
-            "RMSE": ("rmse", "test_rmse"), "R2": ("r2", "test_r2"),
-        }.items():
-            predictions[output_name] = predictions["Prediction_Type"].map(
-                lambda target: next((metric_lookup.get(str(target), {}).get(name)
-                                     for name in metric_names
-                                     if metric_lookup.get(str(target), {}).get(name) is not None), None)
-            )
-        risk_rows = run_query(
-            """SELECT classification_date AS Prediction_Date, risk_level AS Risk_Level
-               FROM risk_classifications
-               WHERE user_id=%s AND uploaded_file_id=%s
-               ORDER BY classification_date, risk_id""",
-            (user_id, dataset_id), fetchall=True,
-        )["rows"] or []
-        if risk_rows:
-            risks = pd.DataFrame(risk_rows).drop_duplicates("Prediction_Date", keep="last")
-            predictions = predictions.merge(risks, on="Prediction_Date", how="left")
-        return _excel_download(predictions, "finsight_predictions.xlsx")
+        return jsonify({"error": "This Excel export is no longer available. Use the dashboard or prediction page."}), 404
     except mysql.connector.Error:
         app.logger.exception("Database failure during Power BI %s export", export_type)
         return jsonify({"error": "The export could not be created because the database is unavailable. Please try again later."}), 503
@@ -3408,8 +3523,7 @@ def _powerbi_export_frames(user_id: int, company_name: str,
         dataset_id = _current_dataset_id(user_id)
     if dataset_id is None:
         return {
-            "Cleaned_Data": pd.DataFrame(), "Predictions": pd.DataFrame(),
-            "Prediction_vs_Actual": pd.DataFrame(), "KPI_Summary": pd.DataFrame(),
+            "Cleaned_Data": pd.DataFrame(), "KPI_Summary": pd.DataFrame(),
             "Time_Analysis": pd.DataFrame(), "Category_Analysis": pd.DataFrame(),
             "README": pd.DataFrame(),
         }
@@ -3437,11 +3551,19 @@ def _powerbi_export_frames(user_id: int, company_name: str,
     types = _analysis_types_for(cleaned, use_cached=False)
     numeric_columns = [column for column, kind in types.items()
                        if kind == "numeric" and column in cleaned.columns
-                       and pd.to_numeric(cleaned[column], errors="coerce").notna().any()]
+                       and pd.to_numeric(cleaned[column], errors="coerce").notna().any()
+                       and not _visual_identifier_like(str(column), cleaned[column])]
     for column in numeric_columns:
         cleaned[column] = pd.to_numeric(cleaned[column], errors="coerce")
     date_column = _date_column_for(cleaned, types)
+    visual = _visualization_data(cleaned, types)
+    primary_metric = visual.get("metric_column")
+    if primary_metric in numeric_columns:
+        numeric_columns = [primary_metric] + [column for column in numeric_columns if column != primary_metric]
 
+    # Predictions remain available to the private Power BI CSV integration and
+    # the in-app history. They are deliberately excluded from the downloadable
+    # Excel dashboard and from the removed predictions Excel endpoint.
     prediction_rows = run_query(
         """SELECT prediction_id AS Prediction_ID, prediction_type AS Prediction_Type,
                   prediction_date AS Prediction_Date, actual_value AS Actual_Value,
@@ -3461,7 +3583,10 @@ def _powerbi_export_frames(user_id: int, company_name: str,
     }
     for column in numeric_columns:
         values = pd.to_numeric(cleaned[column], errors="coerce")
-        kpi_values[f"Total_{str(column).replace(' ', '_')}" ] = float(values.sum())
+        prefix = "Total" if _visual_additive_measure(str(column)) else "Average"
+        kpi_values[f"{prefix}_{str(column).replace(' ', '_')}"] = float(
+            values.sum() if prefix == "Total" else values.mean()
+        )
     if date_column and not cleaned.empty:
         dates = pd.to_datetime(cleaned[date_column], errors="coerce").dropna()
         if not dates.empty:
@@ -3482,7 +3607,8 @@ def _powerbi_export_frames(user_id: int, company_name: str,
                 internal_period += "_"
             dated[internal_period] = dated[date_column].dt.to_period("M").astype(str)
             time_analysis = dated.groupby(internal_period, as_index=False).agg(
-                **{column: (column, "sum") for column in numeric_columns},
+                **{column: (column, "sum" if _visual_additive_measure(str(column)) else "mean")
+                   for column in numeric_columns},
                 **{row_count_label: (date_column, "size")},
             )
             time_analysis = time_analysis.rename(columns={internal_period: period_label})
@@ -3497,8 +3623,11 @@ def _powerbi_export_frames(user_id: int, company_name: str,
         grouped = cleaned[[dimension] + ([numeric_columns[0]] if numeric_columns else [])].copy()
         grouped[dimension] = grouped[dimension].map(_export_dimension_text)
         if numeric_columns:
-            grouped = grouped.groupby(dimension, as_index=False)[numeric_columns[0]].sum(min_count=1)
-            category_analysis = grouped.rename(columns={dimension: "Category", numeric_columns[0]: "Value"})
+            primary = numeric_columns[0]
+            grouped = grouped.groupby(dimension, as_index=False)[primary].agg(
+                "sum" if _visual_additive_measure(str(primary)) else "mean"
+            )
+            category_analysis = grouped.rename(columns={dimension: "Category", primary: "Value"})
         else:
             category_analysis = grouped.groupby(dimension, as_index=False).size()
             category_analysis = category_analysis.rename(columns={dimension: "Category", "size": "Value"})

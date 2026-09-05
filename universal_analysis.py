@@ -234,7 +234,12 @@ def regression_targets(df: pd.DataFrame, types: Dict[str, str]) -> List[str]:
         if abs(float(s.std(ddof=1))) < 1e-9:
             continue
         # Skip unique-ID style numeric columns (e.g. Order_ID as a number).
-        if _is_id_name(name) and int(s.nunique()) >= max(10, 0.9 * n_rows):
+        generic_counter = (
+            name.strip().lower().startswith("column_")
+            and int(s.nunique()) >= max(10, 0.9 * n_rows)
+            and bool(s.is_monotonic_increasing)
+        )
+        if (_is_id_name(name) or generic_counter) and int(s.nunique()) >= max(10, 0.9 * n_rows):
             continue
         rank = _hint_rank(name, REGRESSION_HINTS)
         cv = float(s.std(ddof=1) / (abs(s.mean()) if s.mean() else 1.0))
