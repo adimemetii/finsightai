@@ -93,7 +93,12 @@ async function postJson(url, payload) {
 }
 
 function renderForecast(result, target, container) {
+  const metrics = result.model?.metrics || {};
+  const metricText = Object.entries(metrics).map(([key, value]) => `${key.replaceAll('_', ' ').toUpperCase()}: ${number(value)}`).join(' Â· ');
   const forecasts = result.forecasts || [];
+  setTimeout(() => {
+    if (metricText) container.querySelector('.alert')?.insertAdjacentHTML('beforeend', `<br><small class="text-muted">Target: ${escapeHtml(label(target))} Â· Forecast periods: ${forecasts.length} Â· Evaluation: ${escapeHtml(metricText)}</small>`);
+  }, 0);
   const rows = forecasts.map(point => `<tr><td>${escapeHtml(point.date)}</td><td>${number(point.value)}</td><td>${point.actual === null || point.actual === undefined ? '—' : number(point.actual)}</td></tr>`).join('');
   const chart = result.chart ? `<img class="img-fluid rounded border mt-3" src="data:image/png;base64,${result.chart}" alt="Historical and forecast ${escapeHtml(label(target))}">` : '';
   container.innerHTML = `<div class="alert alert-success mb-3"><div class="d-flex justify-content-between"><strong>${escapeHtml(label(target))} forecast</strong><span>${escapeHtml(result.model?.name || 'Model')}</span></div><div class="h3 text-primary mt-2 mb-1">${number(result.prediction)}</div><small class="text-muted">First forecast value · estimated error ${number(result.model?.estimated_error)}</small></div><div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>Forecast period</th><th>Predicted</th><th>Actual, if available</th></tr></thead><tbody>${rows}</tbody></table></div>${chart}`;

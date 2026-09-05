@@ -364,12 +364,18 @@ def _fmt_number(value: Any, decimals: int = 2) -> str:
         return f"{v:,.{decimals}f}"
     except (TypeError, ValueError):
         return str(value)
-def _split(X: pd.DataFrame, y) -> Tuple:
+def _split(X: pd.DataFrame, y, *, chronological: bool = False) -> Tuple:
     try:
         if len(X) < 12:
             return None, None, None, None
         test_size = 0.2 if len(X) >= 20 else 0.3
         n_test = max(2, int(round(len(X) * test_size)))
+        if chronological:
+            split_at = len(X) - n_test
+            if split_at < 6:
+                return None, None, None, None
+            return (X.iloc[:split_at].copy(), X.iloc[split_at:].copy(),
+                    y.iloc[:split_at].copy(), y.iloc[split_at:].copy())
         test_size = n_test / len(X)
         stratify = None
         if y.dtype == object:
@@ -380,6 +386,8 @@ def _split(X: pd.DataFrame, y) -> Tuple:
         return train_test_split(X, y, test_size=test_size,
                                 random_state=RANDOM_STATE, stratify=stratify)
     except Exception:
+        if chronological:
+            return None, None, None, None
         try:
             return train_test_split(X, y, test_size=0.2, random_state=RANDOM_STATE)
         except Exception:
@@ -400,6 +408,8 @@ def train_regression(df: pd.DataFrame, target: str,
             # Invalid dates remain visible in the upload and analysis, but
             # must not become artificial date features inside a time model.
             model_df = df.loc[parsed_dates.notna()].copy()
+            model_df[date_col] = parsed_dates.loc[model_df.index]
+            model_df = model_df.sort_values(date_col)
             dates = parsed_dates.loc[parsed_dates.notna()].sort_values()
             if model_df.empty:
                 base["error"] = "No valid dated observations are available for this prediction."
@@ -426,7 +436,7 @@ def train_regression(df: pd.DataFrame, target: str,
         if X.shape[1] == 0:
             base["error"] = "Not enough suitable features for this prediction."
             return base
-        X_train, X_test, y_train, y_test = _split(X, y)
+        X_train, X_test, y_train, y_test = _split(X, y, chronological=True)
         if X_train is None or len(X_train) < 6:
             base["error"] = "Not enough suitable data for this prediction."
             return base

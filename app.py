@@ -27,6 +27,7 @@ from functools import wraps
 from pathlib import Path
 from email.utils import parseaddr
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 # Load local development variables without overriding deployment variables.
@@ -429,6 +430,20 @@ def _format_number(value: object) -> str:
         return f"{number:,.2f}".rstrip("0").rstrip(".")
     except (TypeError, ValueError):
         return str(value) if value is not None else "—"
+
+
+def _db_text(value: object) -> str | None:
+    """Convert a cleaned arbitrary text value to a safe SQL VARCHAR value."""
+    if value is None:
+        return None
+    if isinstance(value, (list, dict)):
+        return json.dumps(value, ensure_ascii=False, default=str)
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return str(value)
 
 
 def _localized_insight(text: str) -> str:
@@ -1470,92 +1485,315 @@ def dashboard():
     )
 
 
+def _visual_text(value: object) -> str:
+    """Render an uploaded dimension value without replacing it with a fake label."""
+    if value is None:
+        return "Unspecified"
+    try:
+        missing = pd.isna(value)
+        if isinstance(missing, (bool, np.bool_)) and missing:
+            return "Unspecified"
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, (list, dict)):
+        return json.dumps(value, ensure_ascii=False, default=str)
+    return str(value).strip() or "Unspecified"
+
+
+def _visualization_data(df: pd.DataFrame, types: dict[str, str] | None = None) -> dict[str, object]:
+    """Select real dimensions/measures and aggregate only uploaded values."""
+    empty = {
+        "numeric_columns": [], "date_column": None, "metric_column": None,
+        "dimension_column": None, "category_label": "Category",
+        "category_metric_label": "Value", "categories": [], "column_data": [],
+        "area_data": [], "locations": [], "totals": {},
+        "area_message": "No valid date/time column available for an area chart.",
+        "donut_message": "No suitable categorical data available for a donut chart.",
+        "column_message": "No suitable categorical data available for a column chart.",
+        "map_message": "No geographic data available for map visualization.",
+    }
+    if df is None or df.empty:
+        return empty
+    work = df.copy()
+    types = types or _analysis_types_for(work, use_cached=False)
+    numeric_columns: list[str] = []
+    for column in work.columns:
+        if types.get(column) != "numeric":
+            continue
+        values = pd.to_numeric(work[column], errors="coerce")
+        if values.notna().any():
+            work[column] = values
+            numeric_columns.append(str(column))
+    empty["numeric_columns"] = numeric_columns
+    if not numeric_columns:
+        empty["area_message"] = "No suitable numeric data available for an area chart."
+        empty["map_message"] = "No suitable numeric data available for map visualization."
+        return empty
+
+    metric_priority = ("revenue", "sales", "income", "amount", "profit", "expense",
+                       "cost", "customers", "quantity", "count", "value")
+    def metric_rank(column: str) -> tuple[int, int, str]:
+        normalized = str(column).casefold().replace(" ", "_")
+        rank = next((index for index, token in enumerate(metric_priority) if token in normalized), 999)
+        return rank, -int(work[column].notna().sum()), str(column)
+    numeric_columns.sort(key=metric_rank)
+    metric = numeric_columns[0]
+    empty["metric_column"] = metric
+
+    dimensions = []
+    for column in work.columns:
+        kind = types.get(column)
+        if kind not in {"categorical", "text", "boolean"}:
+            continue
+        values = work[column].dropna()
+        try:
+            unique_count = int(values.astype("string").nunique())
+        except Exception:
+            unique_count = 0
+        if unique_count == 0 or unique_count > 50:
+            continue
+        normalized = str(column).casefold().replace(" ", "_")
+        rank = next((index for index, token in enumerate(
+            ("category", "segment", "department", "product", "region", "country", "state", "city", "type")
+        ) if token in normalized), 99)
+        dimensions.append((rank, -unique_count, str(column)))
+    dimensions.sort()
+    dimension = dimensions[0][2] if dimensions else None
+    empty["dimension_column"] = dimension
+    if dimension:
+        grouped = work[[dimension, metric]].copy()
+        grouped[dimension] = grouped[dimension].map(_visual_text)
+        grouped[metric] = pd.to_numeric(grouped[metric], errors="coerce")
+        grouped = grouped.dropna(subset=[metric])
+        grouped = grouped.groupby(dimension, as_index=False)[metric].sum(min_count=1)
+        grouped = grouped.rename(columns={dimension: "category", metric: "value"})
+        grouped = grouped.replace([np.inf, -np.inf], np.nan).dropna(subset=["value"])
+        grouped = grouped.sort_values("value", ascending=False).head(12)
+        categories = grouped.to_dict("records")
+        empty["categories"] = categories
+        empty["column_data"] = categories
+        empty["category_label"] = str(dimension).replace("_", " ").title()
+        empty["category_metric_label"] = f"Total {str(metric).replace('_', ' ').title()}"
+        empty["donut_message"] = "" if categories else "No suitable categorical data available for a donut chart."
+        empty["column_message"] = "" if categories else "No suitable categorical data available for a column chart."
+
+    date_column = _date_column_for(work, types)
+    empty["date_column"] = date_column
+    if date_column:
+        dated = work[[date_column, metric]].copy()
+        dated["_date"] = pd.to_datetime(dated[date_column], errors="coerce")
+        dated[metric] = pd.to_numeric(dated[metric], errors="coerce")
+        dated = dated.dropna(subset=["_date", metric]).sort_values("_date")
+        if dated["_date"].nunique() >= 2:
+            if dated["_date"].nunique() > 120:
+                dated["period"] = dated["_date"].dt.to_period("M").astype(str)
+                area = dated.groupby("period", as_index=False)[metric].sum(min_count=1)
+            else:
+                dated["period"] = dated["_date"].dt.strftime("%Y-%m-%d")
+                area = dated.groupby("period", as_index=False)[metric].sum(min_count=1)
+            area = area.rename(columns={metric: "value"})
+            empty["area_data"] = area.to_dict("records")
+            empty["area_message"] = ""
+
+    geo_priority = ("country_name", "country", "nation", "state", "province", "region", "city", "location")
+    geo_candidates = []
+    for column in work.columns:
+        kind = types.get(column)
+        if kind not in {"categorical", "text"}:
+            continue
+        values = work[column].dropna()
+        unique_count = int(values.astype("string").nunique()) if not values.empty else 0
+        if not 0 < unique_count <= 200:
+            continue
+        normalized = str(column).casefold().replace(" ", "_")
+        rank = next((index for index, token in enumerate(geo_priority)
+                     if normalized == token or normalized.endswith("_" + token)), None)
+        if rank is not None:
+            geo_candidates.append((rank, -unique_count, str(column)))
+    geo_candidates.sort()
+    geo_column = geo_candidates[0][2] if geo_candidates else None
+    if geo_column:
+        locations = work[[geo_column, metric]].copy()
+        locations["location"] = locations[geo_column].map(_visual_text)
+        locations["value"] = pd.to_numeric(locations[metric], errors="coerce")
+        locations = locations.dropna(subset=["value"])
+        locations = locations.groupby("location", as_index=False)["value"].sum(min_count=1)
+        locations = locations.sort_values("value", ascending=False).head(50)
+        empty["locations"] = locations.to_dict("records")
+        empty["map_message"] = "" if not locations.empty else "No geographic data available for map visualization."
+
+    empty["totals"] = {column: float(pd.to_numeric(work[column], errors="coerce").sum())
+                        for column in numeric_columns}
+    return empty
+
+
 @app.route("/analytics")
 @app.route("/visualizations")
 @login_required
 def analytics():
-    """Render charts whose dimensions and measures exist in the active upload."""
+    """Render real visualizations derived from the active uploaded dataset."""
     user_id = _session_user_id()
     _, df = _active_dataset_and_frame(user_id)
     empty_context = {
-        "company_name": session["company_name"], "has_data": False, "monthly": [],
-        "categories": [], "cities": [], "totals": {}, "trend_keys": [],
+        "company_name": session["company_name"], "has_data": False,
+        "monthly": [], "area_data": [], "categories": [], "column_data": [],
+        "locations": [], "cities": [], "totals": {}, "trend_keys": [],
         "trend_labels": [], "category_label": "Category", "has_trend": False,
-        "area_data": [], "has_area": False,
-        "category_metric_label": "Rows", "has_categories": False,
-        "has_totals": False, "has_cities": False, "generic_analytics": True,
+        "has_area": False, "has_categories": False, "has_column": False,
+        "has_totals": False, "has_map": False, "has_cities": False,
+        "category_metric_label": "Value", "generic_analytics": True,
+        "area_message": "No valid date/time column available for an area chart.",
+        "donut_message": "No suitable categorical data available for a donut chart.",
+        "column_message": "No suitable categorical data available for a column chart.",
+        "map_message": "No geographic data available for map visualization.",
     }
     if df is None or df.empty:
         return render_template("analytics.html", **empty_context)
-
-    working = df.copy()
-    analysis = _analysis_context(user_id) or {}
-    types = analysis.get("types") or _analysis_types_for(working)
-    numeric_columns = []
-    for column, kind in types.items():
-        if kind == "numeric" and column in working.columns:
-            values = pd.to_numeric(working[column], errors="coerce")
-            if values.notna().any():
-                working[column] = values
-                numeric_columns.append(column)
-
-    typed_dimensions = [name for name, kind in types.items()
-                        if kind in {"categorical", "text", "boolean"} and name in working.columns]
-    date_col = _date_column_for(working, types)
-
-    trend_keys = numeric_columns[:4]
-    monthly: list[dict] = []
-    if date_col and trend_keys:
-        dated = working.copy()
-        dated["_period"] = pd.to_datetime(dated[date_col], errors="coerce").dt.to_period("M").astype("string")
-        dated = dated.dropna(subset=["_period"])
-        if not dated.empty:
-            monthly_frame = dated.groupby("_period", as_index=False)[trend_keys].sum(min_count=1)
-            monthly = monthly_frame.rename(columns={"_period": "period"}).to_dict("records")
-    area_data = monthly
-    if not area_data and trend_keys:
-        area_frame = working[trend_keys].head(120).copy()
-        area_frame.insert(0, "period", [f"Row {index + 1}" for index in range(len(area_frame))])
-        area_data = area_frame.to_dict("records")
-
-    category_col = next((name for name in typed_dimensions if working[name].notna().any()), None)
-    value_col = numeric_columns[0] if numeric_columns else None
-    categories: list[dict] = []
-    category_metric_label = "Rows"
-    if category_col:
-        category_frame = working[[category_col] + ([value_col] if value_col else [])].copy()
-        grouped = category_frame
-        grouped[category_col] = grouped[category_col].fillna("Unspecified").astype(str)
-        if value_col:
-            grouped = grouped.groupby(category_col, as_index=False)[value_col].sum(min_count=1)
-            grouped = grouped.rename(columns={category_col: "category", value_col: "value"})
-            category_metric_label = f"Total {value_col.replace('_', ' ').title()}"
-        else:
-            grouped = grouped.groupby(category_col, as_index=False).size()
-            grouped = grouped.rename(columns={category_col: "category", "size": "value"})
-        categories = grouped.sort_values("value", ascending=False).head(12).to_dict("records")
-
-    cities: list[dict] = []
-    if "city" in working.columns and value_col and working["city"].notna().any():
-        city_frame = working[["city", value_col]].copy()
-        city_frame["city"] = city_frame["city"].astype(str).str.strip()
-        city_frame = city_frame[city_frame["city"] != ""]
-        cities = city_frame.groupby("city", as_index=False)[value_col].sum(min_count=1) \
-            .rename(columns={value_col: "amount"}).sort_values("amount", ascending=False).head(20).to_dict("records")
-
-    totals = {column: float(pd.to_numeric(working[column], errors="coerce").sum())
-              for column in numeric_columns}
+    visual = _visualization_data(df)
     return render_template(
         "analytics.html", company_name=session["company_name"], has_data=True,
-        monthly=monthly, area_data=area_data, categories=categories, cities=cities, totals=totals,
-        generic_analytics=True, trend_keys=trend_keys,
-        trend_labels=[str(column).replace("_", " ").title() for column in trend_keys],
-        category_label=category_col.replace("_", " ").title() if category_col else "Category",
-        category_metric_label=category_metric_label,
-        has_trend=bool(monthly and trend_keys), has_area=bool(area_data and trend_keys),
-        has_categories=bool(categories),
-        has_totals=bool(totals), has_cities=bool(cities),
+        monthly=visual["area_data"], area_data=visual["area_data"],
+        categories=visual["categories"], column_data=visual["column_data"],
+        locations=visual["locations"], cities=visual["locations"], totals=visual["totals"],
+        generic_analytics=True, trend_keys=[visual["metric_column"]] if visual["metric_column"] else [],
+        trend_labels=[str(visual["metric_column"]).replace("_", " ").title()] if visual["metric_column"] else [],
+        category_label=visual["category_label"], category_metric_label=visual["category_metric_label"],
+        has_trend=bool(visual["area_data"]), has_area=bool(visual["area_data"]),
+        has_categories=bool(visual["categories"]), has_column=bool(visual["column_data"]),
+        has_totals=bool(visual["totals"]), has_map=bool(visual["locations"]),
+        has_cities=bool(visual["locations"]), area_message=visual["area_message"],
+        donut_message=visual["donut_message"], column_message=visual["column_message"],
+        map_message=visual["map_message"],
     )
+
+
+_GEOCODE_CACHE: dict[str, tuple[float, float] | None] = {}
+
+
+def _geocode_uploaded_location(value: str) -> tuple[float, float] | None:
+    """Resolve an actual uploaded location for the downloadable map image."""
+    query = str(value).strip()
+    if not query:
+        return None
+    if query in _GEOCODE_CACHE:
+        return _GEOCODE_CACHE[query]
+    try:
+        url = "https://nominatim.openstreetmap.org/search?" + urlencode({
+            "format": "jsonv2", "limit": 1, "q": query,
+        })
+        request_obj = Request(url, headers={"User-Agent": "FinSightAI/1.0"})
+        with urlopen(request_obj, timeout=5) as response:
+            results = json.loads(response.read().decode("utf-8"))
+        if results:
+            point = (float(results[0]["lat"]), float(results[0]["lon"]))
+            _GEOCODE_CACHE[query] = point
+            return point
+    except (HTTPError, URLError, TimeoutError, ValueError, KeyError, OSError, json.JSONDecodeError):
+        pass
+    _GEOCODE_CACHE[query] = None
+    return None
+
+
+def _visualization_png(visual: dict[str, object], chart_type: str) -> io.BytesIO:
+    """Render one current-dataset visualization into an in-memory PNG."""
+    chart_type = str(chart_type).casefold()
+    fig, axis = plt.subplots(figsize=(10, 5), constrained_layout=True)
+    if chart_type == "donut":
+        data = visual.get("categories") or []
+        if not data:
+            raise ValueError(visual.get("donut_message") or "No donut chart data is available.")
+        axis.pie([float(row["value"]) for row in data],
+                 labels=[str(row["category"]) for row in data],
+                 autopct="%1.1f%%", startangle=90,
+                 wedgeprops={"width": 0.42, "edgecolor": "white"})
+        axis.set_title(f"{visual.get('category_metric_label', 'Value')} by {visual.get('category_label', 'Category')}")
+    elif chart_type == "column":
+        data = visual.get("column_data") or []
+        if not data:
+            raise ValueError(visual.get("column_message") or "No column chart data is available.")
+        labels = [str(row["category"]) for row in data]
+        axis.bar(labels, [float(row["value"]) for row in data], color="#2563eb")
+        axis.set_title(f"{visual.get('category_metric_label', 'Value')} by {visual.get('category_label', 'Category')}")
+        axis.set_xlabel(str(visual.get("category_label", "Category")))
+        axis.set_ylabel(str(visual.get("category_metric_label", "Value")))
+        axis.tick_params(axis="x", rotation=35)
+    elif chart_type == "area":
+        data = visual.get("area_data") or []
+        if not data:
+            raise ValueError(visual.get("area_message") or "No area chart data is available.")
+        x_values = np.arange(len(data))
+        periods = [str(row["period"]) for row in data]
+        y_values = [float(row["value"]) for row in data]
+        axis.fill_between(x_values, y_values, color="#69d6a3", alpha=0.35)
+        axis.plot(x_values, y_values, color="#168b5a", linewidth=2)
+        axis.set_title(f"{visual.get('metric_column', 'Metric')} over time")
+        axis.set_xlabel(str(visual.get("date_column") or "Date"))
+        axis.set_ylabel(str(visual.get("metric_column") or "Value"))
+        axis.set_xticks(x_values)
+        axis.set_xticklabels(periods)
+        axis.tick_params(axis="x", rotation=35)
+    elif chart_type == "totals":
+        totals = visual.get("totals") or {}
+        if not totals:
+            raise ValueError("No numeric data is available for a totals chart.")
+        axis.bar([str(key).replace("_", " ").title() for key in totals],
+                 [float(value) for value in totals.values()], color="#16a34a")
+        axis.set_title("Uploaded numeric totals")
+        axis.tick_params(axis="x", rotation=35)
+    elif chart_type == "map":
+        locations = visual.get("locations") or []
+        if not locations:
+            raise ValueError(visual.get("map_message") or "No geographic data available for map visualization.")
+        resolved = []
+        for row in locations[:20]:
+            point = _geocode_uploaded_location(str(row["location"]))
+            if point is not None:
+                resolved.append((row, point))
+        if not resolved:
+            raise ValueError("The uploaded geographic values could not be resolved for a downloadable map.")
+        values = [float(row["value"]) for row, _ in resolved]
+        scatter = axis.scatter([point[1] for _, point in resolved],
+                               [point[0] for _, point in resolved],
+                               c=values, s=80, cmap="viridis", alpha=0.85,
+                               edgecolors="black", linewidths=0.4)
+        for row, point in resolved:
+            axis.annotate(str(row["location"]), (point[1], point[0]),
+                          xytext=(4, 4), textcoords="offset points", fontsize=8)
+        axis.set_xlim(-180, 180)
+        axis.set_ylim(-90, 90)
+        axis.set_xlabel("Longitude")
+        axis.set_ylabel("Latitude")
+        axis.set_title(f"{visual.get('metric_column', 'Value')} by uploaded geographic value")
+        fig.colorbar(scatter, ax=axis, label=str(visual.get("metric_column") or "Value"))
+        axis.grid(alpha=0.25)
+    else:
+        plt.close(fig)
+        raise ValueError("Unknown visualization.")
+    axis.grid(alpha=0.2)
+    output = io.BytesIO()
+    fig.savefig(output, format="png", dpi=120)
+    plt.close(fig)
+    output.seek(0)
+    return output
+
+
+@app.get("/analytics/download/<chart_type>")
+@login_required
+def download_analytics_visualization(chart_type: str):
+    """Download a PNG rendered from the authenticated user's active upload."""
+    if chart_type not in {"donut", "column", "area", "map", "totals"}:
+        return jsonify({"error": "Unknown visualization."}), 404
+    user_id = _session_user_id()
+    _, df = _active_dataset_and_frame(user_id)
+    if df is None or df.empty:
+        return jsonify({"error": "Upload a dataset before downloading a visualization."}), 404
+    try:
+        visual = _visualization_data(df)
+        output = _visualization_png(visual, chart_type)
+    except (ValueError, TypeError, OSError) as exc:
+        return jsonify({"error": str(exc) or "This visualization is not available for the current dataset."}), 404
+    return send_file(output, as_attachment=True,
+                     download_name=f"finsight_{chart_type}_chart.png", mimetype="image/png")
 
 
 # =====================================================
@@ -1703,11 +1941,11 @@ def upload_file():
             financial_rows.append((
                 user_id, company_id, file_id,
                 None if pd.isna(tx_value) else tx_value.date(),
-                financial_row.get("transaction_id"), financial_row.get("description"),
+                _db_text(financial_row.get("transaction_id")), _db_text(financial_row.get("description")),
                 *[None if pd.isna(financial_row.get(column)) else float(financial_row.get(column))
                   for column in ("amount", "revenue", "expenses", "profit", "customers", "marketing_spend")],
-                financial_row.get("tx_type"), financial_row.get("category"), financial_row.get("payment_method"),
-                financial_row.get("department"), financial_row.get("city"), financial_row.get("status"),
+                _db_text(financial_row.get("tx_type")), _db_text(financial_row.get("category")), _db_text(financial_row.get("payment_method")),
+                _db_text(financial_row.get("department")), _db_text(financial_row.get("city")), _db_text(financial_row.get("status")),
             ))
             dataset_rows.append((
                 user_id, company_id, file_id, row_number,
@@ -1796,6 +2034,7 @@ def upload_file():
             "duplicates_removed": cleaning["duplicates_removed"],
             "blank_rows_removed": cleaning["blank_rows_removed"],
             "missing_values_remaining": cleaning["missing_values_remaining"],
+            "missing_values_filled": cleaning.get("missing_values_filled", 0),
             "invalid_dates": cleaning["invalid_dates"],
             "date_column": mapping.get("tx_date"),
             "mapping": mapped_labels,
@@ -2382,6 +2621,7 @@ def predict():
             "model_name": model.get("model_name", "Linear Regression"),
             "estimated_error": (model.get("metrics") or {}).get("rmse")
                 or (model.get("metrics") or {}).get("mae") or 0,
+            "metrics": model.get("metrics") or {},
         }
         prediction_ids = []
         for point in forecast_points:
@@ -2577,6 +2817,7 @@ def predict():
             "model": {
                 "name": prediction_info.get("model_name", "linear_regression"),
                 "estimated_error": float(prediction_info.get("estimated_error") or 0),
+                "metrics": prediction_info.get("metrics") or {},
             },
         })
     except mysql.connector.Error:
@@ -3040,11 +3281,21 @@ def download_powerbi_excel(export_type: str):
             return dashboard
 
         if export_type == "raw":
-            # Always return an Excel workbook, including when the source was a
-            # CSV or JSON upload. The rows are read from the user's actual
-            # stored bytes and are not replaced with a template dataset.
-            raw_frame = _raw_upload_frame(upload)
-            return _excel_download(raw_frame, "finsight_raw_data.xlsx")
+            # Return the exact bytes supplied by the user so the raw download
+            # cannot accidentally become the cleaned or canonical projection.
+            if upload.get("raw_data") is not None:
+                return send_file(io.BytesIO(bytes(upload["raw_data"])),
+                                 as_attachment=True,
+                                 download_name=upload["original_name"],
+                                 mimetype=_upload_mimetype(upload["original_name"]))
+            resource = _powerbi_resource(user_id, create=False)
+            target = (POWERBI_ROOT / resource["folder_token"] / "uploads" / upload["stored_name"]
+                      if resource else None)
+            if target is None or not target.is_file():
+                return jsonify({"error": "The original uploaded file is unavailable."}), 404
+            return send_file(target, as_attachment=True,
+                             download_name=upload["original_name"],
+                             mimetype=_upload_mimetype(upload["original_name"]))
 
         if export_type == "cleaned":
             frames = _powerbi_export_frames(user_id, session["company_name"], dataset_id)
@@ -3068,6 +3319,23 @@ def download_powerbi_excel(export_type: str):
         # Keep the actual target name and model output; do not pivot into a
         # financial-only schema for arbitrary datasets.
         predictions = pd.DataFrame(prediction_rows)
+        metric_lookup: dict[str, dict[str, object]] = {}
+        analysis_state = session_data.get(user_id, {}).get("analysis", {})
+        for section in analysis_state.get("sections", []) if isinstance(analysis_state, dict) else []:
+            if section.get("kind") == "regression" and not section.get("error"):
+                metric_lookup[str(section.get("target"))] = section.get("metrics") or {}
+        for target, model_info in get_models(user_id).items():
+            if target not in metric_lookup and isinstance(model_info, dict):
+                metric_lookup[target] = model_info.get("metrics") or {}
+        for output_name, metric_names in {
+            "MAE": ("mae", "test_mae"), "MSE": ("mse", "test_mse"),
+            "RMSE": ("rmse", "test_rmse"), "R2": ("r2", "test_r2"),
+        }.items():
+            predictions[output_name] = predictions["Prediction_Type"].map(
+                lambda target: next((metric_lookup.get(str(target), {}).get(name)
+                                     for name in metric_names
+                                     if metric_lookup.get(str(target), {}).get(name) is not None), None)
+            )
         risk_rows = run_query(
             """SELECT classification_date AS Prediction_Date, risk_level AS Risk_Level
                FROM risk_classifications

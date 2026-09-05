@@ -27,6 +27,8 @@ FIELD_SPECS: dict[str, dict[str, Any]] = {
         "aliases": [
             "date", "transaction_date", "sale_date", "invoice_date",
             "order_date", "created_at", "created_date", "timestamp", "time", "period",
+            "datetime", "date_time", "transaction_datetime", "order_datetime",
+            "year", "fiscal_year", "month",
         ],
     },
     "revenue": {
@@ -179,11 +181,24 @@ def _numeric_ratio(series: pd.Series) -> float:
     return float(pd.to_numeric(cleaned, errors="coerce").notna().mean())
 
 
-def _date_ratio(series: pd.Series) -> float:
+def _date_ratio(series: pd.Series, name: Any = None) -> float:
     sample = _as_text(series)
     sample = sample[sample != ""]
     if len(sample) < 2:
         return 0.0
+    normalized = normalize_column_name(name) if name is not None else ""
+    # Year and month are useful period columns even when spreadsheets store
+    # them as numbers. They are only converted into a full date when the
+    # cleaner has enough information to do so (see clean_dataframe).
+    numeric = pd.to_numeric(sample, errors="coerce")
+    if normalized in {"year", "fiscal_year"}:
+        return float(numeric.between(1900, 2100).mean())
+    if normalized in {"month", "month_number"}:
+        if numeric.notna().any():
+            return float(numeric.between(1, 12).mean())
+        if not sample.str.contains(r"\b(?:19|20)\d{2}\b", regex=True).any():
+            return 0.0
+        return float(_parse_dates(sample).notna().mean())
     parsed = _parse_dates(sample)
     return float(parsed.notna().mean())
 
@@ -196,7 +211,7 @@ def _unique_count(series: pd.Series) -> int:
         return int(series.astype("string").nunique(dropna=True))
 
 
-def _parse_dates(series: pd.Series) -> pd.Series:
+def _parse_dates(series: pd.Series, column_name: Any = None) -> pd.Series:
     """Parse text, timestamps, and common Excel serial dates safely."""
     if series is None:
         return pd.Series(dtype="datetime64[ns]")
@@ -211,10 +226,26 @@ def _parse_dates(series: pd.Series) -> pd.Series:
             except (TypeError, ValueError, OverflowError, pd.errors.OutOfBoundsDatetime):
                 continue
 
+    if pd.api.types.is_datetime64_any_dtype(series):
+        assign_valid(series)
+        return result
+
     numeric = pd.to_numeric(series, errors="coerce")
+    normalized_name = normalize_column_name(column_name) if column_name is not None else ""
+    year_mask = pd.Series(False, index=series.index)
+    if normalized_name in {"year", "fiscal_year"}:
+        year_mask = numeric.between(1900, 2100, inclusive="both")
+        if year_mask.any():
+            try:
+                assign_valid(pd.to_datetime(
+                    {"year": numeric.loc[year_mask].astype("Int64"),
+                     "month": 1, "day": 1}, errors="coerce"
+                ))
+            except (TypeError, ValueError, OverflowError):
+                pass
     # Excel's 1900 date system is represented by serial days. Avoid
     # interpreting ordinary amounts as dates by requiring a date-like range.
-    excel_mask = numeric.between(2000, 100000, inclusive="both")
+    excel_mask = numeric.between(2000, 100000, inclusive="both") & ~year_mask
     if excel_mask.any():
         assign_valid(pd.to_datetime(
             numeric.loc[excel_mask], unit="D", origin="1899-12-30", errors="coerce"
@@ -238,12 +269,12 @@ def _parse_dates(series: pd.Series) -> pd.Series:
     return result
 
 
-def _value_type(series: pd.Series) -> str:
+def _value_type(series: pd.Series, name: Any = None) -> str:
     if series.dropna().empty:
         return "empty"
-    if _numeric_ratio(series) >= 0.85:
+    if _numeric_ratio(series) >= 0.6:
         return "numeric"
-    if _date_ratio(series) >= 0.6:
+    if _date_ratio(series, name) >= 0.6:
         return "date"
     unique = _unique_count(series)
     if unique <= 1:
@@ -288,7 +319,7 @@ def detect_columns(df: pd.DataFrame) -> dict[str, Any]:
         column_info.append({
             "source": raw_name,
             "normalized": normalized_names[index],
-            "type": _value_type(series),
+            "type": _value_type(series, raw_name),
             "non_empty": int(series.notna().sum()),
         })
 
@@ -302,7 +333,7 @@ def detect_columns(df: pd.DataFrame) -> dict[str, Any]:
                 continue
             score = _alias_score(info["normalized"], spec["aliases"])
             if spec["kind"] == "date":
-                score += 22.0 * _date_ratio(df.iloc[:, column_index])
+                score += 22.0 * _date_ratio(df.iloc[:, column_index], info["source"])
                 if info["type"] == "numeric":
                     score -= 20.0
             elif spec["kind"] == "numeric":
@@ -347,6 +378,10 @@ def detect_columns(df: pd.DataFrame) -> dict[str, Any]:
             # fuzzy candidate.  Lower-confidence results require a clear margin.
             is_safe = top["score"] >= 105 and (top["score"] - second_score >= 3 or len(candidates) == 1)
             is_safe = is_safe or (top["score"] >= 88 and top["score"] - second_score >= 12)
+            is_safe = is_safe or (
+                field == "tx_date" and top.get("normalized") in {"year", "fiscal_year", "month", "month_number"}
+                and top["score"] >= 105
+            )
             if is_safe and top["source"] not in used_sources:
                 selected = top
         if selected:
@@ -450,6 +485,8 @@ def clean_dataframe(df: pd.DataFrame, mapping: dict[str, str] | None = None) -> 
         raise ValueError("File is empty or has no data.")
 
     original_rows = int(len(df))
+    if mapping is None:
+        mapping = detect_columns(df).get("mapping", {})
     work = apply_mapping(df, mapping)
     # Excel often carries a synthetic index as ``Unnamed: 0``. Remove only
     # clearly synthetic columns; a real business index is preserved unless it
@@ -494,6 +531,38 @@ def clean_dataframe(df: pd.DataFrame, mapping: dict[str, str] | None = None) -> 
             numeric_invalid += int((before & converted.isna()).sum())
             work[column] = converted
 
+    # A number of business exports split a period into Year and Month. Keep
+    # those source columns, but add a real date for time-series analysis when
+    # both components are present. No date is invented when either component
+    # is missing or invalid.
+    period_year = next((column for column in work.columns
+                        if normalize_column_name(column) in {"year", "fiscal_year"}), None)
+    if period_year is None and "tx_date" in work.columns:
+        candidate_year = pd.to_numeric(work["tx_date"], errors="coerce")
+        if float(candidate_year.between(1900, 2100).mean()) >= 0.6:
+            period_year = "tx_date"
+    period_month = next((column for column in work.columns
+                         if normalize_column_name(column) in {"month", "month_number"}), None)
+    if period_year is not None and period_month is not None:
+        year_values = pd.to_numeric(work[period_year], errors="coerce")
+        month_values = pd.to_numeric(work[period_month], errors="coerce")
+        month_names = work[period_month].astype("string").str.strip().str.casefold()
+        month_names_full = ("January", "February", "March", "April", "May", "June",
+                            "July", "August", "September", "October", "November", "December")
+        month_lookup = {name.casefold(): index for index, name in enumerate(month_names_full, 1)}
+        month_lookup.update({name[:3].casefold(): index for index, name in enumerate(month_names_full, 1)})
+        month_values = month_values.fillna(month_names.map(month_lookup))
+        month_dates = pd.to_datetime(work[period_month], errors="coerce", format="mixed")
+        month_values = month_values.fillna(month_dates.dt.month)
+        valid_period = year_values.between(1900, 2100) & month_values.between(1, 12)
+        invalid_dates += int((year_values.notna() & month_values.notna() & ~valid_period).sum())
+        if valid_period.any():
+            work["tx_date"] = pd.to_datetime(
+                {"year": year_values.where(valid_period).astype("Int64"),
+                 "month": month_values.where(valid_period).astype("Int64"),
+                 "day": 1}, errors="coerce"
+            )
+
     # Apply the same type normalization to non-standard numeric/date columns.
     # Identifier-looking columns are deliberately excluded so values such as
     # customer codes with leading zeroes are preserved exactly.
@@ -504,15 +573,17 @@ def clean_dataframe(df: pd.DataFrame, mapping: dict[str, str] | None = None) -> 
         if pd.api.types.is_bool_dtype(series) or _looks_like_identifier(column):
             continue
         try:
-            value_type = _value_type(series)
-            if value_type == "numeric" and _numeric_ratio(series) >= 0.85:
+            value_type = _value_type(series, column)
+            if value_type == "numeric" and _numeric_ratio(series) >= 0.6:
                 before = series.notna()
                 converted = _numeric_series(series)
                 numeric_invalid += int((before & converted.isna()).sum())
                 work[column] = converted
-            elif value_type == "date" and _date_ratio(series) >= 0.6:
+            elif (value_type == "date"
+                  and normalize_column_name(column) not in {"year", "fiscal_year", "month", "month_number"}
+                  and _date_ratio(series, column) >= 0.6):
                 non_empty = series.notna() & series.astype("string").str.strip().ne("")
-                parsed = _parse_dates(series)
+                parsed = _parse_dates(series, column)
                 invalid_dates += int((non_empty & parsed.isna()).sum())
                 work[column] = parsed
         except (TypeError, ValueError):
@@ -523,9 +594,44 @@ def clean_dataframe(df: pd.DataFrame, mapping: dict[str, str] | None = None) -> 
     if "tx_date" in work.columns:
         raw_date = work["tx_date"]
         non_empty = raw_date.notna() & raw_date.astype("string").str.strip().ne("")
-        parsed = _parse_dates(raw_date)
+        date_name = "tx_date"
+        numeric_date = pd.to_numeric(raw_date, errors="coerce")
+        if float(numeric_date.between(1900, 2100).mean()) >= 0.6:
+            date_name = "year"
+        parsed = _parse_dates(raw_date, date_name)
         invalid_dates += int((non_empty & parsed.isna()).sum())
         work["tx_date"] = parsed
+
+    # Resolve missing business values after type conversion. Dates are the
+    # deliberate exception: filling a missing/invalid date would fabricate
+    # historical observations and could leak false chronology into a model.
+    missing_before_fill = int(work.isna().sum().sum())
+    for column in list(work.columns):
+        if column == "tx_date":
+            continue
+        series = work[column]
+        if not series.isna().any():
+            continue
+        is_numeric = pd.api.types.is_numeric_dtype(series)
+        if not is_numeric and not _looks_like_identifier(column):
+            is_numeric = _numeric_ratio(series) >= 0.6
+        if is_numeric and not _looks_like_identifier(column):
+            values = _numeric_series(series)
+            median = values.dropna().median()
+            if pd.notna(median):
+                work[column] = values.fillna(float(median))
+            else:
+                # An all-invalid numeric field has no defensible replacement;
+                # keep it numeric/NaN so persistence and analysis can report
+                # the missing signal without turning it into text.
+                work[column] = values
+            continue
+        try:
+            mode = series.dropna().mode()
+            replacement = mode.iloc[0] if len(mode) else "Unknown"
+        except (TypeError, ValueError):
+            replacement = "Unknown"
+        work[column] = series.fillna(replacement)
 
     # Compare normalized values so formatting differences such as "$1,200"
     # versus "1200" do not allow duplicate business rows through.
@@ -550,6 +656,7 @@ def clean_dataframe(df: pd.DataFrame, mapping: dict[str, str] | None = None) -> 
         "duplicates_removed": duplicates_removed,
         "invalid_dates": invalid_dates,
         "invalid_numeric_values": numeric_invalid,
+        "missing_values_filled": max(0, missing_before_fill - missing_values),
         "missing_values_remaining": missing_values,
         # Kept in the response for compatibility with existing clients.  It is
         # always false because the cleaner must not invent business columns.
@@ -602,6 +709,8 @@ def profile_json_payload(payload: Any) -> pd.DataFrame:
     else:
         raise ValueError("JSON must contain an array of records or an object.")
     if isinstance(data, list):
+        if not data or any(not isinstance(item, dict) for item in data):
+            raise ValueError("JSON arrays must contain objects with named fields.")
         frame = pd.json_normalize(data)
     elif isinstance(data, dict):
         try:

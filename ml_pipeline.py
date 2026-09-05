@@ -764,6 +764,11 @@ class MLPipeline:
                 'features_used': len(features),
                 'estimated_error': test_rmse,
                 'model_name': metadata.get('best_model'),
+                'metrics': {
+                    key: metrics.get(key)
+                    for key in ('test_mae', 'test_mse', 'test_rmse', 'test_r2')
+                    if metrics.get(key) is not None
+                },
                 'imputed_features': missing,
             }
         

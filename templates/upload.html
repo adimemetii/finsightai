@@ -123,7 +123,7 @@ function currentMapping() {
 }
 
 function renderCleaning(stats) {
-  const facts = [['Rows saved', stats.rows], ['Columns detected', stats.columns], ['Duplicates removed', stats.duplicates_removed], ['Blank rows removed', stats.blank_rows_removed], ['Invalid dates', stats.invalid_dates], ['Missing values remaining', stats.missing_values_remaining]];
+  const facts = [['Rows saved', stats.rows], ['Columns detected', stats.columns], ['Duplicates removed', stats.duplicates_removed], ['Blank rows removed', stats.blank_rows_removed], ['Invalid dates', stats.invalid_dates], ['Missing values filled', stats.missing_values_filled], ['Missing values remaining', stats.missing_values_remaining]];
   document.getElementById('cleaningSummary').innerHTML = facts.map(([label, value]) => `<div class="col-sm-6 col-lg-4"><div class="border rounded p-3 h-100"><small class="text-muted">${label}</small><div class="h4 mb-0 mt-1">${formatNumber(value)}</div></div></div>`).join('');
   const warningText = (stats.warnings || []).length ? `<br><small>${stats.warnings.map(escapeHtml).join(' ')}</small>` : '';
   const forecastText = stats.forecasting_message ? `<br><small>${escapeHtml(stats.forecasting_message)}</small>` : '';
