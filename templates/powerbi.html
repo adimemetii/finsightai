@@ -34,19 +34,25 @@
                 <a href="{{ url_for('download_powerbi_excel', export_type='raw') }}" class="btn btn-outline-success btn-lg w-100">
                     <i class="fas fa-file-excel"></i> {{ t('powerbi.download.raw') }}
                 </a>
-                <p class="text-muted small mt-2 mb-0">{{ t('powerbi.download.raw.help') }}</p>
+                <p class="text-muted small mt-2 mb-0">The original uploaded rows in Excel format.</p>
             </div>
             <div class="col-md-4">
                 <a href="{{ url_for('download_powerbi_excel', export_type='cleaned') }}" class="btn btn-success btn-lg w-100">
                     <i class="fas fa-broom"></i> {{ t('powerbi.download.cleaned') }}
                 </a>
-                <p class="text-muted small mt-2 mb-0">{{ t('powerbi.download.cleaned.help') }}</p>
+                <p class="text-muted small mt-2 mb-0">The real uploaded data after generic cleaning.</p>
+            </div>
+            <div class="col-md-4">
+                <a href="{{ url_for('download_powerbi_excel', export_type='dashboard') }}" class="btn btn-outline-primary btn-lg w-100">
+                    <i class="fas fa-chart-column"></i> Visualization Excel
+                </a>
+                <p class="text-muted small mt-2 mb-0">A workbook built from this upload for Power BI and charts.</p>
             </div>
             <div class="col-md-4">
                 <a href="{{ url_for('download_powerbi_excel', export_type='predictions') }}" class="btn btn-primary btn-lg w-100">
                     <i class="fas fa-chart-line"></i> {{ t('powerbi.download.predictions') }}
                 </a>
-                <p class="text-muted small mt-2 mb-0">{{ t('powerbi.download.predictions.help') }}</p>
+                <p class="text-muted small mt-2 mb-0">Available only when real model predictions exist.</p>
             </div>
         </div>{% else %}<div class="alert alert-info text-center mb-0"><i class="fas fa-info-circle me-2"></i>Upload and process a dataset before downloading Power BI exports.</div>{% endif %}
         <p class="text-muted small text-center mt-4 mb-0">

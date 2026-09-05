@@ -10,7 +10,7 @@
     </div>
 
     <div class="row g-3 mb-4">
-      <div class="col-md-7"><div class="card h-100"><div class="card-body"><h2 class="h5">Supported business files</h2><p class="text-muted small mb-2">CSV, XLSX, XLS, and JSON files up to {{ max_upload_mb }} MB. Column names can vary; the mapper uses names, types, and values.</p><p class="small mb-0"><strong>Dataset-agnostic:</strong> Date, Revenue, Expenses, and other business fields are optional. A dated numeric measure is recommended only if you want forecasting; all other uploaded columns remain available for analysis.</p></div></div></div>
+      <div class="col-md-7"><div class="card h-100"><div class="card-body"><h2 class="h5">Supported files</h2><p class="text-muted small mb-2">CSV, XLSX, XLS, and JSON files up to {{ max_upload_mb }} MB. Upload any valid tabular dataset; column names and subject matter are not restricted.</p><p class="small mb-0"><strong>Forecasting is optional:</strong> a dated numeric measure and enough historical observations are needed only for predictions. Cleaning, analysis, visualization, and exports work without those fields.</p></div></div></div>
       <div class="col-md-5"><div class="card h-100"><div class="card-body"><h2 class="h5">Download templates</h2><p class="text-muted small">Examples only; they are never used as your uploaded dataset. Each template is accepted by this same upload flow.</p><div class="d-flex flex-wrap gap-2">
         <a class="btn btn-sm btn-outline-primary" href="{{ url_for('download_business_template', template_name='general', file_format='csv') }}">General CSV</a><a class="btn btn-sm btn-outline-primary" href="{{ url_for('download_business_template', template_name='general', file_format='xlsx') }}">General XLSX</a><a class="btn btn-sm btn-outline-primary" href="{{ url_for('download_business_template', template_name='general', file_format='json') }}">General JSON</a>
         <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('download_business_template', template_name='retail', file_format='csv') }}">Retail CSV</a><a class="btn btn-sm btn-outline-secondary" href="{{ url_for('download_business_template', template_name='retail', file_format='xlsx') }}">Retail XLSX</a><a class="btn btn-sm btn-outline-secondary" href="{{ url_for('download_business_template', template_name='retail', file_format='json') }}">Retail JSON</a>
@@ -125,7 +125,8 @@ function renderCleaning(stats) {
   const facts = [['Rows saved', stats.rows], ['Columns detected', stats.columns], ['Duplicates removed', stats.duplicates_removed], ['Blank rows removed', stats.blank_rows_removed], ['Invalid dates', stats.invalid_dates], ['Missing values remaining', stats.missing_values_remaining]];
   document.getElementById('cleaningSummary').innerHTML = facts.map(([label, value]) => `<div class="col-sm-6 col-lg-4"><div class="border rounded p-3 h-100"><small class="text-muted">${label}</small><div class="h4 mb-0 mt-1">${formatNumber(value)}</div></div></div>`).join('');
   const warningText = (stats.warnings || []).length ? `<br><small>${stats.warnings.map(escapeHtml).join(' ')}</small>` : '';
-  document.getElementById('successMessage').innerHTML = `<i class="fas fa-check-circle me-2"></i>Dataset saved and ready for visualizations and forecasting.${warningText}`;
+  const forecastText = stats.forecasting_message ? `<br><small>${escapeHtml(stats.forecasting_message)}</small>` : '';
+  document.getElementById('successMessage').innerHTML = `<i class="fas fa-check-circle me-2"></i>Dataset saved. Cleaning, visualizations, and exports are ready.${forecastText}${warningText}`;
 }
 
 uploadBtn.addEventListener('click', async () => {

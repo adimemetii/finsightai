@@ -1654,8 +1654,9 @@ def upload_file():
         ]
         if recommended_missing:
             warnings.append(
-                "Recommended fields not detected: " + ", ".join(recommended_missing) +
-                ". The uploaded columns were retained and can still be analyzed."
+                "Forecasting is optional for this upload. Recommended forecasting "
+                "fields not detected: " + ", ".join(recommended_missing) +
+                ". All uploaded columns were retained for cleaning and analysis."
             )
 
         file_id = run_query(
@@ -1765,6 +1766,20 @@ def upload_file():
             except Exception as exc:
                 app.logger.warning("Model training skipped: %s", exc)
 
+        training_targets = [
+            column for column in ("amount", "expenses", "revenue", "profit")
+            if column in train_df.columns
+            and pd.to_numeric(train_df[column], errors="coerce").notna().sum() >= 10
+        ]
+        forecasting_available = bool(len(train_df) >= 10 and training_targets)
+        forecasting_message = (
+            "Forecasting is available for the detected historical numeric fields."
+            if forecasting_available else
+            "Forecasting was not generated because this upload does not yet contain "
+            "at least 10 valid dated observations for a supported numeric measure. "
+            "Cleaning, analysis, and exports remain available."
+        )
+
         _run_universal_analysis(user_id, dataset_frame)
         add_history(user_id, company_id, "upload", safe_name, file_id=file_id,
                      status="processed", details=f"{len(dataset_frame)} rows imported")
@@ -1786,6 +1801,8 @@ def upload_file():
             "mapping": mapped_labels,
             "warnings": warnings,
             "missing_recommended": recommended_missing,
+            "forecasting_available": forecasting_available,
+            "forecasting_message": forecasting_message,
             "preview": [json_safe_record(record) for record in dataset_frame.head(8).to_dict(orient="records")],
         }
         for column in ("revenue", "expenses", "profit", "amount", "customers", "marketing_spend"):
