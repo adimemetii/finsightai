@@ -2986,6 +2986,22 @@ def _upload_mimetype(filename: str) -> str:
     return mimetypes.guess_type(filename)[0] or "application/octet-stream"
 
 
+def _raw_upload_frame(upload: dict) -> pd.DataFrame:
+    """Read the exact uploaded bytes without applying business cleaning."""
+    raw_data = upload.get("raw_data")
+    if raw_data is not None:
+        source = io.BytesIO(bytes(raw_data))
+    else:
+        resource = _powerbi_resource(_session_user_id(), create=False)
+        source = (
+            POWERBI_ROOT / resource["folder_token"] / "uploads" / upload["stored_name"]
+            if resource else None
+        )
+        if source is None or not source.is_file():
+            raise ValueError("The original uploaded file is unavailable.")
+    return _read_upload_dataframe(source, upload["original_name"])
+
+
 @app.route("/powerbi/download-excel/<export_type>")
 @login_required
 def download_powerbi_excel(export_type: str):
@@ -3007,27 +3023,11 @@ def download_powerbi_excel(export_type: str):
             return dashboard
 
         if export_type == "raw":
-            # The original bytes are stored with the upload so this remains a
-            # real raw download after a Render instance is replaced.
-            raw_data = upload.get("raw_data")
-            if raw_data is not None:
-                return send_file(
-                    io.BytesIO(bytes(raw_data)), as_attachment=True,
-                    download_name=upload["original_name"],
-                    mimetype=_upload_mimetype(upload["original_name"]),
-                )
-            # Backward-compatible fallback for records created before raw_data
-            # was added. It still returns the user's original file bytes.
-            resource = _powerbi_resource(user_id, create=False)
-            source = (
-                POWERBI_ROOT / resource["folder_token"] / "uploads" / upload["stored_name"]
-                if resource else None
-            )
-            if source is None or not source.is_file():
-                return jsonify({"error": "The original uploaded file is unavailable."}), 404
-            return send_file(source, as_attachment=True,
-                             download_name=upload["original_name"],
-                             mimetype=_upload_mimetype(upload["original_name"]))
+            # Always return an Excel workbook, including when the source was a
+            # CSV or JSON upload. The rows are read from the user's actual
+            # stored bytes and are not replaced with a template dataset.
+            raw_frame = _raw_upload_frame(upload)
+            return _excel_download(raw_frame, "finsight_raw_data.xlsx")
 
         if export_type == "cleaned":
             frames = _powerbi_export_frames(user_id, session["company_name"], dataset_id)
