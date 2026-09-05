@@ -296,6 +296,10 @@ def detect_columns(df: pd.DataFrame) -> dict[str, Any]:
     for field, spec in FIELD_SPECS.items():
         candidates: list[dict[str, Any]] = []
         for column_index, info in enumerate(column_info):
+            # A semantic name alone must not turn text such as a customer name
+            # into a numeric business field and erase its real values.
+            if spec["kind"] == "numeric" and _numeric_ratio(df.iloc[:, column_index]) < 0.6:
+                continue
             score = _alias_score(info["normalized"], spec["aliases"])
             if spec["kind"] == "date":
                 score += 22.0 * _date_ratio(df.iloc[:, column_index])

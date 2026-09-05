@@ -55,6 +55,7 @@ const statsSection = document.getElementById('statsSection');
 const errorAlert = document.getElementById('errorAlert');
 const errorMessage = document.getElementById('errorMessage');
 const fieldSpecs = {{ field_specs|tojson }};
+const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
 let selectedFile = null;
 let latestProfile = null;
 
@@ -110,7 +111,7 @@ inspectBtn.addEventListener('click', async () => {
   if (!selectedFile) return;
   const formData = new FormData(); formData.append('file', selectedFile); inspectBtn.disabled = true; hideError();
   try {
-    const response = await axios.post('{{ url_for("upload_preview") }}', formData, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 });
+    const response = await axios.post('{{ url_for("upload_preview") }}', formData, { headers: { 'X-CSRFToken': csrfToken }, timeout: 60000 });
     latestProfile = response.data.profile; renderMapping(latestProfile); renderPreview(latestProfile);
     mappingSection.classList.remove('d-none'); previewSection.classList.remove('d-none'); uploadBtn.disabled = false;
   } catch (error) { showError(error.response?.data?.error || 'We could not inspect this file.'); }
@@ -134,7 +135,7 @@ uploadBtn.addEventListener('click', async () => {
   const formData = new FormData(); formData.append('file', selectedFile); formData.append('mapping', JSON.stringify(currentMapping()));
   uploadBtn.disabled = true; inspectBtn.disabled = true; uploadProgress.classList.remove('d-none'); progressBar.style.width = '0%'; hideError();
   try {
-    const response = await axios.post('{{ url_for("upload_file") }}', formData, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000, onUploadProgress: event => { if (event.total) progressBar.style.width = `${Math.round(event.loaded * 100 / event.total)}%`; } });
+    const response = await axios.post('{{ url_for("upload_file") }}', formData, { headers: { 'X-CSRFToken': csrfToken }, timeout: 120000, onUploadProgress: event => { if (event.total) progressBar.style.width = `${Math.round(event.loaded * 100 / event.total)}%`; } });
     renderCleaning(response.data.stats); statsSection.classList.remove('d-none'); progressBar.style.width = '100%';
   } catch (error) { showError(error.response?.data?.error || 'We could not process this file.'); }
   finally { uploadProgress.classList.add('d-none'); uploadBtn.disabled = false; inspectBtn.disabled = false; }
