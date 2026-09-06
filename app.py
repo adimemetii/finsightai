@@ -437,7 +437,7 @@ def _format_number(value: object) -> str:
         return str(value) if value is not None else "—"
 
 
-def _db_text(value: object) -> str | None:
+def _db_text(value: object, max_length: int | None = None) -> str | None:
     """Convert a cleaned arbitrary text value to a safe SQL VARCHAR value."""
     if value is None:
         return None
@@ -448,7 +448,28 @@ def _db_text(value: object) -> str | None:
             return None
     except (TypeError, ValueError):
         pass
-    return str(value)
+    text = str(value)
+    return text[:max_length] if max_length else text
+
+
+def _db_number(value: object) -> float | None:
+    """Convert only scalar finite values for the optional legacy projection."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return number if np.isfinite(number) else None
+
+
+def _db_date(value: object) -> date | None:
+    """Return a database date only when an upload value is a valid scalar date."""
+    try:
+        parsed = pd.to_datetime(value, errors="coerce")
+        if isinstance(parsed, pd.Timestamp) and not pd.isna(parsed):
+            return parsed.date()
+    except (TypeError, ValueError, OverflowError):
+        pass
+    return None
 
 
 def _localized_insight(text: str) -> str:
@@ -1105,8 +1126,19 @@ def _read_csv_upload(source: str | Path | io.BytesIO) -> pd.DataFrame:
 
             _, rows, malformed = max(candidates, key=lambda item: item[0])
             header = rows[0]
-            valid_rows = [row for row in rows[1:] if len(row) == len(header)]
-            frame = pd.DataFrame(valid_rows, columns=header)
+            provisional = pd.DataFrame(
+                [row for row in rows[1:] if len(row) == len(header)],
+                columns=header,
+            )
+            if _excel_first_row_is_data(provisional):
+                frame = pd.DataFrame(
+                    [row for row in rows if len(row) == len(header)],
+                    columns=[f"column_{index + 1}" for index in range(len(header))],
+                )
+                frame.attrs["finsight_headerless"] = True
+            else:
+                valid_rows = [row for row in rows[1:] if len(row) == len(header)]
+                frame = pd.DataFrame(valid_rows, columns=header)
             if malformed:
                 frame.attrs["finsight_ingest_warnings"] = [
                     f"{malformed} malformed CSV row(s) were skipped while reading the file."
@@ -2280,16 +2312,20 @@ def upload_file():
         dataset_rows = []
         for row_number, (_, row) in enumerate(dataset_frame.iterrows(), start=1):
             financial_row = financial_frame.iloc[row_number - 1]
-            tx_value = financial_row.get("tx_date")
-            tx_value = pd.to_datetime(tx_value, errors="coerce") if tx_value is not None else pd.NaT
+            tx_value = _db_date(financial_row.get("tx_date"))
             financial_rows.append((
                 user_id, company_id, file_id,
-                None if pd.isna(tx_value) else tx_value.date(),
-                _db_text(financial_row.get("transaction_id")), _db_text(financial_row.get("description")),
-                *[None if pd.isna(financial_row.get(column)) else float(financial_row.get(column))
-                  for column in ("amount", "revenue", "expenses", "profit", "customers", "marketing_spend")],
-                _db_text(financial_row.get("tx_type")), _db_text(financial_row.get("category")), _db_text(financial_row.get("payment_method")),
-                _db_text(financial_row.get("department")), _db_text(financial_row.get("city")), _db_text(financial_row.get("status")),
+                tx_value,
+                _db_text(financial_row.get("transaction_id"), 120),
+                _db_text(financial_row.get("description"), 65535),
+                                *[_db_number(financial_row.get(column))
+                                    for column in ("amount", "revenue", "expenses", "profit", "customers", "marketing_spend")],
+                _db_text(financial_row.get("tx_type"), 80),
+                _db_text(financial_row.get("category"), 120),
+                _db_text(financial_row.get("payment_method"), 80),
+                _db_text(financial_row.get("department"), 80),
+                _db_text(financial_row.get("city"), 120),
+                _db_text(financial_row.get("status"), 80),
             ))
             dataset_rows.append((
                 user_id, company_id, file_id, row_number,

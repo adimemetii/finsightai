@@ -27,6 +27,16 @@ def test_upload_readers_and_generic_analysis() -> None:
     frame = app._read_upload_dataframe(io.BytesIO(jsonl), "locations.json")
     assert set(frame.columns) == {"name", "city"}
 
+    raw_json_matrix = b'[[950,12800,"Income"],[1600,10200,"expense"]]'
+    frame = app._read_upload_dataframe(io.BytesIO(raw_json_matrix), "raw.json")
+    assert list(frame.columns) == ["column_1", "column_2", "column_3"]
+    assert len(frame) == 2
+
+    raw_csv = b'950;12800;Income\n1600;10200;expense\n'
+    frame = app._read_upload_dataframe(io.BytesIO(raw_csv), "raw.csv")
+    assert list(frame.columns) == ["column_1", "column_2", "column_3"]
+    assert len(frame) == 2
+
     workbook = io.BytesIO()
     with pd.ExcelWriter(workbook, engine="openpyxl") as writer:
         pd.DataFrame({"Metric": [1, 2], "Group": ["A", "B"]}).to_excel(writer, index=False)
@@ -36,6 +46,15 @@ def test_upload_readers_and_generic_analysis() -> None:
     visual = app._visualization_data(pd.DataFrame({"name": ["Adi", "Arben", "Adi"], "city": ["Gjilan", "Prishtina", "Gjilan"]}))
     assert visual["column_data"]
     assert visual["categorical_summary"]
+
+    nested = app.json_safe_record({
+        "payload": {"values": [1, 2], "created": pd.Timestamp("2026-01-01")},
+        "invalid_number": ["not", "a", "number"],
+    })
+    json.dumps(nested, allow_nan=False)
+    assert nested["payload"]["created"] == "2026-01-01T00:00:00"
+    assert app._db_number(["not-a-number"]) is None
+    assert len(app._db_text("x" * 200, 80)) == 80
 
 
 def test_cleaning_report_and_classifier_no_target_leakage() -> None:

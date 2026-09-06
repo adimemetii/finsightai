@@ -728,16 +728,32 @@ def clean_dataframe(df: pd.DataFrame, mapping: dict[str, str] | None = None) -> 
 
 def json_safe_record(record: dict[str, Any]) -> dict[str, Any]:
     """Convert a dataframe row into a JSON-safe record for durable storage."""
+    def make_safe(value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, dict):
+            return {str(key): make_safe(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple, set)):
+            return [make_safe(item) for item in value]
+        if isinstance(value, (pd.Timestamp, np.datetime64, date, datetime)):
+            return pd.Timestamp(value).isoformat()
+        if isinstance(value, (np.integer, np.floating, np.bool_)):
+            return value.item()
+        try:
+            missing = pd.isna(value)
+            if isinstance(missing, (bool, np.bool_)) and missing:
+                return None
+        except (TypeError, ValueError):
+            pass
+        try:
+            json.dumps(value, ensure_ascii=False, allow_nan=False)
+            return value
+        except (TypeError, ValueError):
+            return str(value)
+
     result: dict[str, Any] = {}
     for key, value in record.items():
-        if value is None or (not isinstance(value, (list, dict)) and pd.isna(value)):
-            result[str(key)] = None
-        elif isinstance(value, (pd.Timestamp, np.datetime64, date, datetime)):
-            result[str(key)] = pd.Timestamp(value).isoformat()
-        elif isinstance(value, (np.integer, np.floating, np.bool_)):
-            result[str(key)] = value.item()
-        else:
-            result[str(key)] = value
+        result[str(key)] = make_safe(value)
     return result
 
 
@@ -763,25 +779,141 @@ def profile_dataframe(df: pd.DataFrame, mapping: dict[str, str] | None = None) -
     }
 
 
-def profile_json_payload(payload: Any) -> pd.DataFrame:
-    """Read common JSON business-data shapes into a dataframe."""
+def _json_header_row_is_real_header(row: list[Any]) -> bool:
+    """Return whether a JSON row contains recognizable business headers."""
+    if not row or any(not isinstance(value, str) or not value.strip() for value in row):
+        return False
+    aliases = {
+        normalize_column_name(alias)
+        for spec in FIELD_SPECS.values()
+        for alias in spec.get("aliases", [])
+    }
+    normalized = [normalize_column_name(value) for value in row]
+    return bool(set(normalized) & aliases)
+
+
+def _json_rows_to_frame(rows: list[Any]) -> pd.DataFrame:
+    """Convert JSON arrays into records, matrices, or a value column."""
+    if not rows:
+        return pd.DataFrame()
+
+    if all(isinstance(item, dict) for item in rows):
+        return pd.json_normalize(rows)
+
+    if all(isinstance(item, (list, tuple)) for item in rows):
+        matrix = [list(item) for item in rows]
+        header = matrix[0] if _json_header_row_is_real_header(matrix[0]) else None
+        data_rows = matrix[1:] if header is not None else matrix
+        width = max((len(row) for row in matrix), default=0)
+        columns = (
+            _unique_names([str(value).strip() for value in header])
+            if header is not None
+            else [f"column_{index + 1}" for index in range(width)]
+        )
+        padded = [row + [None] * (width - len(row)) for row in data_rows]
+        return pd.DataFrame(padded, columns=columns)
+
+    if all(not isinstance(item, (dict, list, tuple)) for item in rows):
+        return pd.DataFrame({"value": rows})
+
+    # Mixed arrays are still useful tabular input. Objects become named
+    # records, while primitive values are retained in a neutral value field.
+    records = [item if isinstance(item, dict) else {"value": item} for item in rows]
+    return pd.json_normalize(records)
+
+
+def _json_payload_to_frame(payload: Any) -> pd.DataFrame:
+    """Recursively find a tabular representation in a JSON payload."""
     if isinstance(payload, list):
-        data = payload
-    elif isinstance(payload, dict):
-        data = payload.get("data", payload.get("records", payload))
-    else:
-        raise ValueError("JSON must contain an array of records or an object.")
-    if isinstance(data, list):
-        if not data or any(not isinstance(item, dict) for item in data):
-            raise ValueError("JSON arrays must contain objects with named fields.")
-        frame = pd.json_normalize(data)
-    elif isinstance(data, dict):
-        try:
-            frame = pd.DataFrame(data)
-        except ValueError:
-            frame = pd.DataFrame([data])
-    else:
-        raise ValueError("JSON data must be an array of records or an object of columns.")
+        return _json_rows_to_frame(payload)
+
+    if isinstance(payload, dict):
+        # Handle common wrapper keys before constructing a dataframe. Pandas
+        # otherwise treats {"records": [{...}, {...}]} as one column whose
+        # cells are dictionaries instead of as a table of records.
+        preferred = ("data", "records", "items", "results", "rows", "values", "companies")
+        for key in preferred:
+            candidate = payload.get(key)
+            if isinstance(candidate, (list, dict)):
+                frame = _json_payload_to_frame(candidate)
+                if not frame.empty and len(frame.columns) > 0:
+                    return frame
+
+        # Column-oriented JSON, including unequal-length columns, is common in
+        # exports. Nested values are excluded here because pandas otherwise
+        # turns wrapper objects into a misleading one-column dataframe.
+        has_nested_value = any(
+            isinstance(value, dict)
+            or (isinstance(value, (list, tuple))
+                and any(isinstance(item, (dict, list, tuple)) for item in value))
+            for value in payload.values()
+        )
+        if not has_nested_value:
+            try:
+                frame = pd.DataFrame(payload)
+            except (TypeError, ValueError):
+                frame = pd.DataFrame()
+            if not frame.empty and len(frame.columns) > 0:
+                return frame
+
+        column_values = [value for value in payload.values() if isinstance(value, (list, tuple))]
+        if column_values and len(column_values) == len(payload):
+            width = max((len(value) for value in column_values), default=0)
+            padded = {
+                str(key): list(value) + [None] * (width - len(value))
+                for key, value in payload.items()
+            }
+            return pd.DataFrame(padded)
+
+        # Prefer named collection wrappers, then the most likely nested table.
+        candidates = []
+        for key in preferred:
+            if key in payload:
+                candidates.append(payload[key])
+        remaining = [value for key, value in payload.items() if key not in preferred]
+        remaining.sort(
+            key=lambda value: int(
+                isinstance(value, dict)
+                or (isinstance(value, list) and any(isinstance(item, dict) for item in value))
+            ),
+            reverse=True,
+        )
+        has_scalar_value = any(
+            not isinstance(value, (list, tuple, dict)) for value in payload.values()
+        )
+        for candidate in candidates + remaining:
+            if isinstance(candidate, (list, dict)):
+                # A nested list of primitives is normally a field on one
+                # record (for example tags). Treat it as a collection only
+                # when the object has no scalar fields; arrays of records are
+                # always traversed.
+                is_record_collection = isinstance(candidate, list) and any(
+                    isinstance(item, (dict, list, tuple)) for item in candidate
+                )
+                if isinstance(candidate, list) and has_scalar_value and not is_record_collection:
+                    continue
+                frame = _json_payload_to_frame(candidate)
+                if not frame.empty and len(frame.columns) > 0:
+                    return frame
+
+        # A plain JSON object is one record, even when it contains nested data.
+        return pd.json_normalize([payload])
+
+    if payload is None:
+        return pd.DataFrame()
+    return pd.DataFrame({"value": [payload]})
+
+
+def profile_json_payload(payload: Any) -> pd.DataFrame:
+    """Read flexible JSON into a dataframe without requiring named records.
+
+    Supported shapes include record arrays, arrays of arrays, JSON Lines
+    records, column-oriented objects, wrapper objects (``data``, ``records``,
+    ``items`` and similar), nested objects, and primitive value arrays. Matrix
+    rows retain neutral ``column_N`` names unless the first row contains
+    recognizable business headers, so raw/headerless data is not discarded.
+    """
+    frame = _json_payload_to_frame(payload)
     if frame.empty or len(frame.columns) == 0:
         raise ValueError("JSON is empty or does not contain tabular data.")
     return frame

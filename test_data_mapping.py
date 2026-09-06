@@ -35,6 +35,28 @@ def test_common_json_shapes() -> None:
     assert len(wrapped) == 2
     assert json.loads(json.dumps(wrapped.to_dict(orient="records"))) == records
 
+    matrix = profile_json_payload([[950, 12800, "Income"], [1600, 10200, "expense"]])
+    assert list(matrix.columns) == ["column_1", "column_2", "column_3"]
+    assert len(matrix) == 2
+
+    matrix_with_headers = profile_json_payload([
+        ["Date", "Revenue", "City"],
+        ["2026-01-01", "1,200", "Prishtina"],
+    ])
+    assert list(matrix_with_headers.columns) == ["Date", "Revenue", "City"]
+    assert len(matrix_with_headers) == 1
+
+    column_style = profile_json_payload({"date": ["2026-01-01", "2026-01-02"], "revenue": [100, 120]})
+    assert len(column_style) == 2
+    assert set(column_style.columns) == {"date", "revenue"}
+
+    nested = profile_json_payload({"company_export": {"items": [{"name": "A", "city": "Gjilan"}]}})
+    assert list(nested.columns) == ["name", "city"]
+
+    values = profile_json_payload(["Prishtina", "Gjilan"])
+    assert list(values.columns) == ["value"]
+    assert len(values) == 2
+
 
 if __name__ == "__main__":
     test_alias_detection_and_cleaning()
