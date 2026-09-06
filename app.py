@@ -1161,9 +1161,15 @@ def _read_json_upload(source: str | Path | io.BytesIO) -> pd.DataFrame:
         raw = source
     if isinstance(raw, bytes):
         text = None
-        for encoding in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+        for encoding in (
+            "utf-8-sig", "utf-8", "utf-16", "utf-16-le", "utf-16-be",
+            "utf-32", "utf-32-le", "utf-32-be", "cp1252", "latin-1",
+        ):
             try:
-                text = raw.decode(encoding)
+                decoded = raw.decode(encoding)
+                if "\x00" in decoded:
+                    continue
+                text = decoded
                 break
             except UnicodeDecodeError:
                 continue

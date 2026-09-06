@@ -43,6 +43,11 @@ def test_upload_readers_and_generic_analysis() -> None:
     frame = app._read_upload_dataframe(workbook, "metrics.xlsx")
     assert list(frame.columns) == ["Metric", "Group"]
 
+    encoded_json = json.dumps([{"Produkt": "A", "Wert": 12}]).encode("utf-16")
+    frame = app._read_upload_dataframe(io.BytesIO(encoded_json), "windows-export.json")
+    assert list(frame.columns) == ["Produkt", "Wert"]
+    assert len(frame) == 1
+
     visual = app._visualization_data(pd.DataFrame({"name": ["Adi", "Arben", "Adi"], "city": ["Gjilan", "Prishtina", "Gjilan"]}))
     assert visual["column_data"]
     assert visual["categorical_summary"]
