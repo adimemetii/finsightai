@@ -3548,11 +3548,50 @@ def _powerbi_export_frame(frame: pd.DataFrame, *, source: bool = False) -> pd.Da
     # uploaded values as JSON text for exports rather than dropping or
     # replacing them with placeholders.
     for column in work.columns:
-        work[column] = work[column].map(
-            lambda value: json.dumps(value, ensure_ascii=False, default=str)
-            if isinstance(value, (list, dict)) else value
-        )
+        work[column] = work[column].map(_excel_safe_value)
     return work.reset_index(drop=True)
+
+
+def _excel_safe_value(value: object) -> object:
+    """Convert arbitrary upload values into values accepted by Excel cells."""
+    if isinstance(value, (list, tuple, dict, set)):
+        value = json.dumps(value, ensure_ascii=False, default=str)
+    if value is None:
+        return None
+    try:
+        missing = pd.isna(value)
+        if isinstance(missing, (bool, np.bool_)) and missing:
+            return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, (pd.Timestamp, datetime)):
+        timestamp = pd.Timestamp(value)
+        if timestamp.tzinfo is not None:
+            timestamp = timestamp.tz_localize(None)
+        return timestamp.to_pydatetime()
+    if isinstance(value, np.datetime64):
+        return pd.Timestamp(value).to_pydatetime()
+    if isinstance(value, (np.integer, np.floating, np.bool_)):
+        value = value.item()
+    if isinstance(value, float) and not np.isfinite(value):
+        return None
+    if isinstance(value, str):
+        return "".join(char for char in value if ord(char) >= 32 or char in "\t\n\r")
+    return value
+
+
+def _excel_sheet_name(name: object, used: set[str]) -> str:
+    """Return a valid unique Excel worksheet name for arbitrary dimensions."""
+    base = re.sub(r"[\\/*?:\[\]]", "_", str(name or "Sheet")).strip() or "Sheet"
+    base = base[:31]
+    candidate = base
+    suffix = 2
+    while candidate.casefold() in {item.casefold() for item in used}:
+        marker = f"_{suffix}"
+        candidate = f"{base[:31 - len(marker)]}{marker}"
+        suffix += 1
+    used.add(candidate)
+    return candidate
 
 
 def _excel_download(frame: pd.DataFrame, filename: str):
@@ -3577,8 +3616,10 @@ def _excel_download(frame: pd.DataFrame, filename: str):
 def _write_export_sheet(writer, sheet_name: str, frame: pd.DataFrame) -> None:
     """Write one dynamic export sheet while preserving its actual columns."""
     frame = frame if isinstance(frame, pd.DataFrame) else pd.DataFrame()
-    frame.to_excel(writer, sheet_name=sheet_name[:31], index=False)
-    worksheet = writer.sheets[sheet_name[:31]]
+    safe_name = _excel_sheet_name(sheet_name, set(writer.sheets))
+    frame = _powerbi_export_frame(frame)
+    frame.to_excel(writer, sheet_name=safe_name, index=False)
+    worksheet = writer.sheets[safe_name]
     if worksheet.max_column:
         worksheet.freeze_panes = "A2"
         if worksheet.max_row > 1:

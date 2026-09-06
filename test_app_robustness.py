@@ -6,6 +6,7 @@ import io
 import json
 
 import pandas as pd
+from openpyxl import load_workbook
 from flask import render_template, session
 
 import app
@@ -65,6 +66,23 @@ def test_upload_readers_and_generic_analysis() -> None:
     assert nested["payload"]["created"] == "2026-01-01T00:00:00"
     assert app._db_number(["not-a-number"]) is None
     assert len(app._db_text("x" * 200, 80)) == 80
+
+    workbook = io.BytesIO()
+    with pd.ExcelWriter(workbook, engine="openpyxl") as writer:
+        app._write_export_sheet(
+            writer,
+            "A" * 40 + ":invalid",
+            pd.DataFrame({"payload": [{"value": "x\x01"}], "value": [float("inf")]}),
+        )
+        app._write_export_sheet(
+            writer,
+            "A" * 40 + "?invalid",
+            pd.DataFrame({"value": [1]}),
+        )
+    workbook.seek(0)
+    exported = load_workbook(workbook)
+    assert len(exported.sheetnames) == 2
+    assert exported.worksheets[0]["B2"].value is None
 
 
 def test_cleaning_report_and_classifier_no_target_leakage() -> None:
