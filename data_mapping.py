@@ -514,6 +514,14 @@ def _looks_like_identifier(name: Any) -> bool:
     )
 
 
+def _has_nested_values(series: pd.Series) -> bool:
+    """Keep arbitrary JSON objects/arrays out of scalar type coercion."""
+    try:
+        return bool(series.map(lambda value: isinstance(value, (list, tuple, dict, set))).any())
+    except (TypeError, ValueError):
+        return False
+
+
 def clean_dataframe(df: pd.DataFrame, mapping: dict[str, str] | None = None) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Clean an upload and return the cleaned frame plus factual metrics."""
     if df is None or df.empty:
@@ -630,7 +638,8 @@ def clean_dataframe(df: pd.DataFrame, mapping: dict[str, str] | None = None) -> 
             continue
         try:
             value_type = _value_type(series, column)
-            if value_type == "numeric" and _numeric_ratio(series) >= 0.6:
+            if (value_type == "numeric" and _numeric_ratio(series) >= 0.6
+                    and not _has_nested_values(series)):
                 before = series.notna()
                 converted = _numeric_series(series)
                 numeric_invalid += int((before & converted.isna()).sum())

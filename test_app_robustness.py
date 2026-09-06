@@ -52,6 +52,11 @@ def test_upload_readers_and_generic_analysis() -> None:
     assert visual["column_data"]
     assert visual["categorical_summary"]
 
+    nested_frame, _ = app.clean_dataframe(
+        pd.DataFrame({"name": ["A", "B"], "payload": [{"score": 1}, {"score": 2}]}), {}
+    )
+    assert nested_frame["payload"].tolist() == [{"score": 1}, {"score": 2}]
+
     nested = app.json_safe_record({
         "payload": {"values": [1, 2], "created": pd.Timestamp("2026-01-01")},
         "invalid_number": ["not", "a", "number"],
