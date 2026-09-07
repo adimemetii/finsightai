@@ -5,13 +5,13 @@
 <div class="row">
   <div class="col-xl-10 mx-auto">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
-      <div><div class="page-pretitle">FinSight AI</div><h1 class="mb-1"><i class="fas fa-cloud-arrow-up text-primary me-2"></i>Upload Data</h1><p class="text-muted mb-0">Import business data for {{ company_name }}. FinSight AI will explain how it mapped your columns before saving anything.</p></div>
+      <div><div class="page-pretitle">FinSight AI</div><h1 class="mb-1"><i class="fas fa-cloud-arrow-up text-primary me-2"></i>{{ t('upload.title') }}</h1><p class="text-muted mb-0">{{ t('upload.subtitle', company_name=company_name) }}</p></div>
       <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary"><i class="fas fa-arrow-left me-2"></i>{{ t('upload.back') }}</a>
     </div>
 
     <div class="row g-3 mb-4">
-      <div class="col-md-7"><div class="card h-100"><div class="card-body"><h2 class="h5">Supported files</h2><p class="text-muted small mb-2">CSV, XLSX, XLS, and JSON files up to {{ max_upload_mb }} MB. Upload any valid tabular dataset; column names and subject matter are not restricted.</p><p class="small mb-0"><strong>Forecasting is optional:</strong> a dated numeric measure and enough historical observations are needed only for predictions. Cleaning, analysis, visualization, and exports work without those fields.</p></div></div></div>
-      <div class="col-md-5"><div class="card h-100"><div class="card-body"><h2 class="h5">Download templates</h2><p class="text-muted small">Examples only; they are never used as your uploaded dataset. Each template is accepted by this same upload flow.</p><div class="d-flex flex-wrap gap-2">
+      <div class="col-md-7"><div class="card h-100"><div class="card-body"><h2 class="h5">{{ t('upload.supported_files') }}</h2><p class="text-muted small mb-2">{{ t('upload.supported_files_body', max_upload_mb=max_upload_mb) }}</p><p class="small mb-0"><strong>Forecasting is optional:</strong> a dated numeric measure and enough historical observations are needed only for predictions. Cleaning, analysis, visualization, and exports work without those fields.</p></div></div></div>
+      <div class="col-md-5"><div class="card h-100"><div class="card-body"><h2 class="h5">{{ t('upload.download_templates') }}</h2><p class="text-muted small">{{ t('upload.download_templates_body') }}</p><div class="d-flex flex-wrap gap-2">
         <a class="btn btn-sm btn-outline-primary" href="{{ url_for('download_business_template', template_name='general', file_format='csv') }}">General CSV</a><a class="btn btn-sm btn-outline-primary" href="{{ url_for('download_business_template', template_name='general', file_format='xlsx') }}">General XLSX</a><a class="btn btn-sm btn-outline-primary" href="{{ url_for('download_business_template', template_name='general', file_format='json') }}">General JSON</a>
         <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('download_business_template', template_name='retail', file_format='csv') }}">Retail CSV</a><a class="btn btn-sm btn-outline-secondary" href="{{ url_for('download_business_template', template_name='retail', file_format='xlsx') }}">Retail XLSX</a><a class="btn btn-sm btn-outline-secondary" href="{{ url_for('download_business_template', template_name='retail', file_format='json') }}">Retail JSON</a>
         <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('download_business_template', template_name='service', file_format='csv') }}">Service CSV</a><a class="btn btn-sm btn-outline-secondary" href="{{ url_for('download_business_template', template_name='service', file_format='xlsx') }}">Service XLSX</a><a class="btn btn-sm btn-outline-secondary" href="{{ url_for('download_business_template', template_name='service', file_format='json') }}">Service JSON</a>
@@ -21,7 +21,7 @@
     <div class="card shadow-lg border-0">
       <div class="card-body p-4 p-lg-5">
         <div class="upload-area" id="uploadArea" role="button" tabindex="0" aria-controls="fileInput" aria-describedby="uploadHelp">
-          <div class="text-center py-4"><i class="fas fa-file-import fa-3x text-primary mb-3"></i><h2 class="h5">Drag and drop your file here</h2><p class="text-muted mb-2">or click to browse</p><p class="small text-muted mb-0" id="uploadHelp">CSV · XLSX · XLS · JSON · max {{ max_upload_mb }} MB</p></div>
+          <div class="text-center py-4"><i class="fas fa-file-import fa-3x text-primary mb-3"></i><h2 class="h5">{{ t('upload.dropzone.title') }}</h2><p class="text-muted mb-2">{{ t('upload.dropzone.subtitle') }}</p><p class="small text-muted mb-0" id="uploadHelp">CSV · XLSX · XLS · JSON · max {{ max_upload_mb }} MB</p></div>
           <input type="file" id="fileInput" class="d-none" accept=".csv,.xlsx,.xls,.json,text/csv,application/json">
         </div>
         <div id="fileInfo" class="alert alert-info mt-4 d-none"><i class="fas fa-file me-2"></i><strong id="fileName"></strong><span id="fileSize" class="small ms-2"></span></div>
