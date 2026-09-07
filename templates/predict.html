@@ -6,8 +6,8 @@
 <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
   <div>
     <div class="page-pretitle">FinSight AI</div>
-    <h1 class="mb-1"><i class="fas fa-chart-line text-primary me-2"></i>Forecasting</h1>
-    <p class="text-muted mb-0">Choose a detected numeric measure and forecast one or more future periods from your uploaded history.</p>
+    <h1 class="mb-1"><i class="fas fa-chart-line text-primary me-2"></i>{{ t('nav.predict') }}</h1>
+    <p class="text-muted mb-0">{{ t('predict.subtitle.lead') }}</p>
   </div>
   <a href="{{ url_for('upload_file') }}" class="btn btn-primary"><i class="fas fa-cloud-arrow-up me-2"></i>{{ t('nav.upload') }}</a>
 </div>
@@ -15,46 +15,46 @@
 {% if not has_data %}
 <div class="card"><div class="card-body text-center py-5">
   <span class="avatar avatar-xl bg-primary-lt text-primary mb-3"><i class="fas fa-chart-line fa-lg"></i></span>
-  <h2 class="h3">Upload data to start forecasting</h2>
-  <p class="text-muted">FinSight AI needs a dated numeric business measure and enough historical observations to create a reliable forecast.</p>
+  <h2 class="h3">{{ t('predict.empty.title') }}</h2>
+  <p class="text-muted">{{ t('predict.empty.body') }}</p>
   <a class="btn btn-primary" href="{{ url_for('upload_file') }}">{{ t('nav.upload') }}</a>
 </div></div>
 {% elif not forecast_targets %}
 <div class="alert alert-warning"><i class="fas fa-circle-info me-2"></i>
-  {{ forecast_status.warning or 'Forecasting is currently unavailable for this dataset. Your data is still available for dashboard and analytics use.' }}
+  {{ forecast_status.warning or t('predict.unavailable') }}
 </div>
 {% else %}
 <div class="row g-4">
   <div class="col-xl-6">
     <section class="card h-100 border-0 shadow-sm">
-      <div class="card-header bg-gradient border-0"><h2 class="card-title mb-0"><i class="fas fa-arrow-trend-up text-success me-2"></i>{{ primary_target|replace('_', ' ')|title }} Forecast</h2></div>
+      <div class="card-header bg-gradient border-0"><h2 class="card-title mb-0"><i class="fas fa-arrow-trend-up text-success me-2"></i>{{ t('predict.result.title', target=primary_target|replace('_', ' ')|title) }}</h2></div>
       <div class="card-body">
         {% if primary_target %}
-        <p class="text-muted">Forecast this uploaded measure using the model trained on this dataset.</p>
+        <p class="text-muted">{{ t('predict.subtitle.lead') }}</p>
         <div class="row g-3 align-items-end">
-          <div class="col-md-5"><label class="form-label" for="primaryDate">Forecast start date</label><input id="primaryDate" class="form-control" type="date" min="{{ risk_min_date }}" value="{{ risk_default_date }}"></div>
-          <div class="col-md-3"><label class="form-label" for="primaryHorizon">Periods</label><input id="primaryHorizon" class="form-control" type="number" min="1" max="24" value="3"></div>
-          <div class="col-md-4"><button id="primaryForecast" class="btn btn-primary w-100"><i class="fas fa-calculator me-2"></i>Generate</button></div>
+          <div class="col-md-5"><label class="form-label" for="primaryDate">{{ t('predict.date.label') }}</label><input id="primaryDate" class="form-control" type="date" min="{{ risk_min_date }}" value="{{ risk_default_date }}"></div>
+          <div class="col-md-3"><label class="form-label" for="primaryHorizon">{{ t('predict.horizon.label') }}</label><input id="primaryHorizon" class="form-control" type="number" min="1" max="24" value="3"></div>
+          <div class="col-md-4"><button id="primaryForecast" class="btn btn-primary w-100"><i class="fas fa-calculator me-2"></i>{{ t('common.retry') }}</button></div>
         </div>
         <div id="primaryResult" class="mt-4" aria-live="polite"></div>
-        {% else %}<p class="text-muted mb-0">No detected numeric field has enough dated observations for forecasting.</p>{% endif %}
+        {% else %}<p class="text-muted mb-0">{{ t('predict.no_dated_field') }}</p>{% endif %}
       </div>
     </section>
   </div>
   <div class="col-xl-6">
     <section class="card h-100 border-0 shadow-sm">
-      <div class="card-header bg-gradient border-0"><h2 class="card-title mb-0"><i class="fas fa-chart-column text-warning me-2"></i>Other detected measures</h2></div>
+      <div class="card-header bg-gradient border-0"><h2 class="card-title mb-0"><i class="fas fa-chart-column text-warning me-2"></i>{{ t('predict.other_measures.title') }}</h2></div>
       <div class="card-body">
         {% if expense_targets %}
-        <p class="text-muted">Select the business measure you want to project.</p>
+        <p class="text-muted">{{ t('predict.other_measures.subtitle') }}</p>
         <div class="row g-3 align-items-end">
-          <div class="col-md-5"><label class="form-label" for="expenseTarget">Forecast target</label><select id="expenseTarget" class="form-select">{% for target in expense_targets %}<option value="{{ target }}">{{ target|replace('_', ' ')|title }}</option>{% endfor %}</select></div>
-          <div class="col-md-3"><label class="form-label" for="expenseDate">Forecast start date</label><input id="expenseDate" class="form-control" type="date" min="{{ risk_min_date }}" value="{{ risk_default_date }}"></div>
-          <div class="col-md-2"><label class="form-label" for="expenseHorizon">Periods</label><input id="expenseHorizon" class="form-control" type="number" min="1" max="24" value="3"></div>
-          <div class="col-md-2"><button id="expenseForecast" class="btn btn-primary w-100"><i class="fas fa-calculator"></i><span class="visually-hidden">Generate forecast</span></button></div>
+          <div class="col-md-5"><label class="form-label" for="expenseTarget">{{ t('predict.target.label') }}</label><select id="expenseTarget" class="form-select">{% for target in expense_targets %}<option value="{{ target }}">{{ target|replace('_', ' ')|title }}</option>{% endfor %}</select></div>
+          <div class="col-md-3"><label class="form-label" for="expenseDate">{{ t('predict.date.label') }}</label><input id="expenseDate" class="form-control" type="date" min="{{ risk_min_date }}" value="{{ risk_default_date }}"></div>
+          <div class="col-md-2"><label class="form-label" for="expenseHorizon">{{ t('predict.horizon.label') }}</label><input id="expenseHorizon" class="form-control" type="number" min="1" max="24" value="3"></div>
+          <div class="col-md-2"><button id="expenseForecast" class="btn btn-primary w-100" title="{{ t('predict.generate') }}"><i class="fas fa-calculator"></i><span class="visually-hidden">{{ t('predict.generate') }}</span></button></div>
         </div>
         <div id="expenseResult" class="mt-4" aria-live="polite"></div>
-        {% else %}<p class="text-muted mb-0">No additional detected numeric measure is forecastable.</p>{% endif %}
+        {% else %}<p class="text-muted mb-0">{{ t('predict.error.no_additional_model') }}</p>{% endif %}
       </div>
     </section>
   </div>
@@ -62,17 +62,17 @@
 
 {% if risk_available %}
 <section class="card mt-4 border-0 shadow-sm">
-  <div class="card-header bg-gradient border-0"><h2 class="card-title mb-0"><i class="fas fa-shield-halved text-danger me-2"></i>Risk snapshot</h2></div>
-  <div class="card-body"><div class="row g-3 align-items-end"><div class="col-md-4"><label class="form-label" for="riskDate">Date to classify</label><input id="riskDate" class="form-control" type="date" min="{{ risk_min_date }}" value="{{ risk_default_date }}"></div><div class="col-md-3"><button id="classifyRisk" class="btn btn-danger w-100"><i class="fas fa-shield-heart me-2"></i>Classify risk</button></div></div><div id="riskResult" class="mt-4" aria-live="polite"></div><p class="small text-muted mt-3 mb-0">The classification is based on the available revenue, expense, profit, and amount signals.</p></div>
+  <div class="card-header bg-gradient border-0"><h2 class="card-title mb-0"><i class="fas fa-shield-halved text-danger me-2"></i>{{ t('risk.title') }}</h2></div>
+  <div class="card-body"><div class="row g-3 align-items-end"><div class="col-md-4"><label class="form-label" for="riskDate">{{ t('risk.date.label') }}</label><input id="riskDate" class="form-control" type="date" min="{{ risk_min_date }}" value="{{ risk_default_date }}"></div><div class="col-md-3"><button id="classifyRisk" class="btn btn-danger w-100"><i class="fas fa-shield-heart me-2"></i>{{ t('risk.submit') }}</button></div></div><div id="riskResult" class="mt-4" aria-live="polite"></div><p class="small text-muted mt-3 mb-0">{{ t('risk.method') }}</p></div>
 </section>
 {% endif %}
 {% endif %}
 
 {% if analysis and analysis.sections %}
 <section class="card mt-4 border-0 shadow-sm">
-  <div class="card-header bg-gradient border-0"><h2 class="h5 mb-0"><i class="fas fa-microscope me-2"></i>Detected analysis models</h2></div>
+  <div class="card-header bg-gradient border-0"><h2 class="h5 mb-0"><i class="fas fa-microscope me-2"></i>{{ t('predict.analysis.title') }}</h2></div>
   <div class="card-body">
-    <p class="text-muted small">These results are based on the structure and values in the active upload. A classifier is shown only when a suitable categorical target was detected.</p>
+    <p class="text-muted small">{{ t('predict.analysis.subtitle') }}</p>
     <div class="row g-3">
       {% for section in analysis.sections %}
       <div class="col-md-6">
@@ -94,6 +94,8 @@
 <script>
 const predictionUrl = {{ url_for('predict')|tojson }};
 const riskUrl = {{ url_for('risk_classify')|tojson }};
+const I18N = window.FINSIGHT_I18N || {};
+const T = (key, fallback) => (I18N[key] !== undefined ? I18N[key] : (fallback || key));
 const escapeHtml = value => String(value ?? '').replace(/[&<>'\"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
 const number = value => { const parsed = Number(value); return Number.isFinite(parsed) ? new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(parsed) : '—'; };
 const label = target => String(target).replaceAll('_', ' ').replace(/\b\w/g, char => char.toUpperCase());
@@ -114,28 +116,28 @@ async function postJson(url, payload) {
 
 function renderForecast(result, target, container) {
   const metrics = result.model?.metrics || {};
-  const metricText = Object.entries(metrics).map(([key, value]) => `${key.replaceAll('_', ' ').toUpperCase()}: ${number(value)}`).join(' Â· ');
+  const metricText = Object.entries(metrics).map(([key, value]) => `${key.replaceAll('_', ' ').toUpperCase()}: ${number(value)}`).join(' · ');
   const forecasts = result.forecasts || [];
   setTimeout(() => {
-    if (metricText) container.querySelector('.alert')?.insertAdjacentHTML('beforeend', `<br><small class="text-muted">Target: ${escapeHtml(label(target))} Â· Forecast periods: ${forecasts.length} Â· Evaluation: ${escapeHtml(metricText)}</small>`);
+    if (metricText) container.querySelector('.alert')?.insertAdjacentHTML('beforeend', `<br><small class="text-muted">${T('predict.target')}: ${escapeHtml(label(target))} · ${T('predict.periods')}: ${forecasts.length} · ${T('predict.evaluation')}: ${escapeHtml(metricText)}</small>`);
   }, 0);
   const rows = forecasts.map(point => `<tr><td>${escapeHtml(point.date)}</td><td>${number(point.value)}</td><td>${point.actual === null || point.actual === undefined ? '—' : number(point.actual)}</td></tr>`).join('');
-  const chart = result.chart ? `<img class="img-fluid rounded border mt-3" src="data:image/png;base64,${result.chart}" alt="Historical and forecast ${escapeHtml(label(target))}">` : '';
-  container.innerHTML = `<div class="alert alert-success mb-3"><div class="d-flex justify-content-between"><strong>${escapeHtml(label(target))} forecast</strong><span>${escapeHtml(result.model?.name || 'Model')}</span></div><div class="h3 text-primary mt-2 mb-1">${number(result.prediction)}</div><small class="text-muted">First forecast value · estimated error ${number(result.model?.estimated_error)}</small></div><div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>Forecast period</th><th>Predicted</th><th>Actual, if available</th></tr></thead><tbody>${rows}</tbody></table></div>${chart}`;
+  const chart = result.chart ? `<img class="img-fluid rounded border mt-3" src="data:image/png;base64,${result.chart}" alt="${escapeHtml(label(target))}">` : '';
+  container.innerHTML = `<div class="alert alert-success mb-3"><div class="d-flex justify-content-between"><strong>${escapeHtml(label(target))} ${T('nav.predict').toLowerCase()}</strong><span>${escapeHtml(result.model?.name || T('predict.model'))}</span></div><div class="h3 text-primary mt-2 mb-1">${number(result.prediction)}</div><small class="text-muted">${T('predict.first_value')} · ${T('predict.estimated_error')} ${number(result.model?.estimated_error)}</small></div><div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>${T('predict.forecast_period')}</th><th>${T('predict.predicted')}</th><th>${T('predict.actual_if_available')}</th></tr></thead><tbody>${rows}</tbody></table></div>${chart}`;
 }
 
 async function requestForecast(target, dateId, horizonId, resultId, button) {
   const container = document.getElementById(resultId);
   const date = document.getElementById(dateId).value;
   const horizon = document.getElementById(horizonId).value;
-  if (!date) { container.innerHTML = '<div class="alert alert-warning">Choose a forecast start date.</div>'; return; }
+  if (!date) { container.innerHTML = `<div class="alert alert-warning">${T('predict.choose_date')}</div>`; return; }
   button.disabled = true;
-  container.innerHTML = '<div class="text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Generating forecast…</div>';
+  container.innerHTML = `<div class="text-muted"><span class="spinner-border spinner-border-sm me-2"></span>${T('predict.generating')}</div>`;
   try {
     const response = await postJson(predictionUrl, { model_type: target, date, forecast_periods: horizon });
     renderForecast(response.data, target, container);
   } catch (error) {
-    container.innerHTML = `<div class="alert alert-danger">${escapeHtml(error.response?.data?.error || 'Not enough historical data to generate a reliable forecast.')}</div>`;
+    container.innerHTML = `<div class="alert alert-danger">${escapeHtml(error.response?.data?.error || T('predict.not_enough_data'))}</div>`;
   } finally { button.disabled = false; }
 }
 
@@ -153,8 +155,8 @@ if (riskButton) riskButton.addEventListener('click', async () => {
   try {
     const response = await postJson(riskUrl, { date: document.getElementById('riskDate').value });
     const data = response.data;
-    result.innerHTML = `<div class="alert alert-${data.risk_level === 'HIGH RISK' ? 'danger' : data.risk_level === 'MEDIUM RISK' ? 'warning' : 'success'} mb-0"><strong>${escapeHtml(data.risk_level)}</strong><p class="mb-1 mt-2">${escapeHtml(data.explanation)}</p><small>Revenue ${number(data.revenue)} · Expenses ${number(data.expenses)} · Profit ${number(data.profit)}</small></div>`;
-  } catch (error) { result.innerHTML = `<div class="alert alert-danger mb-0">${escapeHtml(error.response?.data?.error || 'Risk classification could not be completed.')}</div>`; }
+    result.innerHTML = `<div class="alert alert-${data.risk_level === 'HIGH RISK' ? 'danger' : data.risk_level === 'MEDIUM RISK' ? 'warning' : 'success'} mb-0"><strong>${escapeHtml(data.risk_level)}</strong><p class="mb-1 mt-2">${escapeHtml(data.explanation)}</p><small>${T('predict.risk_revenue')} ${number(data.revenue)} · ${T('predict.risk_expenses')} ${number(data.expenses)} · ${T('predict.risk_profit')} ${number(data.profit)}</small></div>`;
+  } catch (error) { result.innerHTML = `<div class="alert alert-danger mb-0">${escapeHtml(error.response?.data?.error || T('predict.risk_error'))}</div>`; }
   finally { riskButton.disabled = false; }
 });
 </script>

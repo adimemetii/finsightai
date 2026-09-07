@@ -116,14 +116,66 @@ _EN: Dict[str, str] = {
     "api.error.upload_before_powerbi": "Upload and process a dataset before generating Power BI resources.",
     "api.error.file_too_large_title": "File too large",
     "base.title": "FinSight AI - Financial Forecasting",
+    "upload.title": "Upload Data",
     "upload.subtitle": "Import business data for {company_name}. FinSight AI will explain how it mapped your columns before saving anything.",
+    "upload.supported_files": "Supported files",
+    "upload.supported_files_body": "CSV, XLSX, XLS, and JSON files up to {max_upload_mb} MB. Upload any valid tabular dataset; column names and subject matter are not restricted.",
+    "upload.download_templates": "Download templates",
+    "upload.download_templates_body": "Examples only; they are never used as your uploaded dataset. Each template is accepted by this same upload flow.",
+    "upload.inspect_columns": "Inspect columns",
+    "upload.mapping.title": "What FinSight AI understood",
+    "upload.mapping.subtitle": "High-confidence matches are selected automatically. Review uncertain matches and change any field before saving.",
+    "upload.preview.title": "Data preview",
+    "upload.cleaning.title": "Cleaning summary",
     "upload.js.inspect_file": "Inspect the file before saving it.",
     "settings.title": "Profile / Settings - FinSight AI",
     "settings.header": "Profile / Settings",
+    "settings.subtitle": "Review the account and upload settings used for this workspace.",
+    "settings.label.name": "Name",
     "settings.label.email": "Email",
+    "settings.label.company": "Company",
+    "settings.label.member_since": "Member since",
+    "settings.label.formats": "Supported formats",
+    "settings.label.max_size": "Maximum file size",
+    "settings.label.language": "Current language",
+    "settings.label.isolation": "Data isolation",
+    "settings.value.isolation": "Company workspace",
     "settings.value.not_available": "Not available",
+    "settings.workspace.title": "Data workspace",
+    "settings.account.title": "Account profile",
+    "settings.footer_info": "Use the language selector in the header to change the interface language. Your password is stored as a secure hash and is never displayed here.",
+    "predict.empty.title": "Upload data to start forecasting",
+    "predict.empty.body": "FinSight AI needs a dated numeric business measure and enough historical observations to create a reliable forecast.",
+    "predict.result.title": "{target} Forecast",
+    "predict.subtitle.lead": "Forecast this uploaded measure using the model trained on this dataset.",
+    "predict.horizon.label": "Periods",
+    "predict.other_measures.title": "Other detected measures",
+    "predict.other_measures.subtitle": "Select the business measure you want to project.",
+    "predict.error.no_additional_model": "No additional detected numeric measure is forecastable.",
+    "predict.date.label": "Forecast start date",
+    "predict.target.label": "Forecast target",
+    "predict.analysis.title": "Detected analysis models",
+    "predict.analysis.subtitle": "These results are based on the structure and values in the active upload. A classifier is shown only when a suitable categorical target was detected.",
+    "risk.date.label": "Date to classify",
     "predict.empty.body_fallback": "Forecasting is currently unavailable for this dataset. Your data is still available for dashboard and analytics use.",
+    "analytics.numeric_summary.title": "Numeric summary",
+    "analytics.numeric_summary.col.measure": "Measure",
+    "analytics.numeric_summary.col.count": "Count",
+    "analytics.numeric_summary.col.mean": "Mean",
+    "analytics.numeric_summary.col.median": "Median",
+    "analytics.numeric_summary.col.min": "Min",
+    "analytics.numeric_summary.col.max": "Max",
+    "analytics.numeric_summary.col.std": "Std. dev.",
+    "analytics.numeric_summary.col.sum": "Sum",
+    "analytics.category_summary.title": "Category counts",
+    "analytics.category_summary.unique": "unique",
+    "analytics.chart.area": "Area chart",
+    "analytics.chart.donut": "Donut chart",
+    "analytics.chart.column": "Column chart",
+    "analytics.chart.distribution": "Distribution of {label}",
+    "analytics.chart.map": "Map chart",
     "powerbi.empty.alert": "Upload and process a dataset before downloading Power BI exports.",
+
 
 
     # ---------- Dashboard ----------
@@ -595,14 +647,66 @@ _SQ: Dict[str, str] = {
     "api.error.upload_before_powerbi": "Ngarko dhe përpuno një dataset para se të gjenerosh resurset Power BI.",
     "api.error.file_too_large_title": "Skedari shumë i madh",
     "base.title": "FinSight AI - Parashikim Financiar",
+    "upload.title": "Ngarko të dhëna",
     "upload.subtitle": "Importo të dhënat e biznesit për {company_name}. FinSight AI do të shpjegojë se si i mapoi kolonat tuaja para se të ruajë gjëra.",
+    "upload.supported_files": "Skedarët e mbështetur",
+    "upload.supported_files_body": "Skedarë CSV, XLSX, XLS dhe JSON deri në {max_upload_mb} MB. Ngarko çdo dataset tabular të vlefshëm; emrat e kolonave dhe tema nuk janë të kufizuar.",
+    "upload.download_templates": "Shkarko template-at",
+    "upload.download_templates_body": "Vetëm shembuj; ato nuk përdoren kurrë si dataset-i juaj i ngarkuar. Çdo template pranohet nga ky proces ngarkimi.",
+    "upload.inspect_columns": "Inspekto kolonat",
+    "upload.mapping.title": "Çfarë kuptoi FinSight AI",
+    "upload.mapping.subtitle": "Përputhjet me besueshmëri të lartë zgjidhen automatikisht. Rishiko përputhjet e pasigurta dhe ndrysho çdo fushë para ruajtjes.",
+    "upload.preview.title": "Parashikimi i të dhënave",
+    "upload.cleaning.title": "Përmbledhja e pastrimit",
     "upload.js.inspect_file": "Kontrollo skedarin para se ta ruash.",
     "settings.title": "Profili / Cilësimet - FinSight AI",
     "settings.header": "Profili / Cilësimet",
+    "settings.subtitle": "Rishiko llogarinë dhe cilësimet e ngarkimit të përdorura për këtë hapësirë pune.",
+    "settings.label.name": "Emri",
     "settings.label.email": "Email",
+    "settings.label.company": "Kompania",
+    "settings.label.member_since": "Anëtar që nga",
+    "settings.label.formats": "Formatet e mbështetura",
+    "settings.label.max_size": "Madhësia maksimale e skedarit",
+    "settings.label.language": "Gjuha aktuale",
+    "settings.label.isolation": "Izolimi i të dhënave",
+    "settings.value.isolation": "Hapësira e kompanisë",
     "settings.value.not_available": "Nuk është e disponueshme",
+    "settings.workspace.title": "Hapësira e të dhënat",
+    "settings.account.title": "Profili i llogarisë",
+    "settings.footer_info": "Përdor selektorin e gjuhës në krye për të ndryshuar gjuhën e ndërfaqes. Fjalëkalimi juaj ruhet si një hash i sigurt dhe nuk shfaqet kurrë këtu.",
+    "predict.empty.title": "Ngarko të dhëna për të filluar parashikimin",
+    "predict.empty.body": "FinSight AI ka nevojë për një masë numerike të datuar dhe mjaftueshëm vëzhgime historike për të krijuar një parashikim të besueshëm.",
+    "predict.result.title": "Parashikimi i {target}",
+    "predict.subtitle.lead": "Parashiko këtë masë të ngarkuar duke përdorur modelin e trajnuar në këtë dataset.",
+    "predict.horizon.label": "Periudhat",
+    "predict.other_measures.title": "Masa të tjera të zbuluara",
+    "predict.other_measures.subtitle": "Zgjidh masën e biznesit që dëshiron të projektosh.",
+    "predict.error.no_additional_model": "Asnjë masë numerike shtesë e zbuluar nuk është e parashikueshme.",
+    "predict.date.label": "Data e fillimit të parashikimit",
+    "predict.target.label": "Objektivi i parashikimit",
+    "predict.analysis.title": "Modelet e analizës të zbuluara",
+    "predict.analysis.subtitle": "Këto rezultate bazohen në strukturën dhe vlerat në ngarkimin aktual. Një klasifikator shfaqet vetëm kur zbulon një objektiv kategorik të përshtatshëm.",
+    "risk.date.label": "Data për klasifikim",
     "predict.empty.body_fallback": "Parashikimi është aktualisht i padisponueshëm për këtë dataset. Të dhënat tuaja janë ende të disponueshme për panelin dhe analizat.",
+    "analytics.numeric_summary.title": "Përmbledhja numerike",
+    "analytics.numeric_summary.col.measure": "Masa",
+    "analytics.numeric_summary.col.count": "Numri",
+    "analytics.numeric_summary.col.mean": "Mesatari",
+    "analytics.numeric_summary.col.median": "Mediana",
+    "analytics.numeric_summary.col.min": "Min",
+    "analytics.numeric_summary.col.max": "Max",
+    "analytics.numeric_summary.col.std": "Dev. std.",
+    "analytics.numeric_summary.col.sum": "Shuma",
+    "analytics.category_summary.title": "Numërimi i kategorive",
+    "analytics.category_summary.unique": "unike",
+    "analytics.chart.area": "Grafiku i sipërfaqes",
+    "analytics.chart.donut": "Grafiku Donut",
+    "analytics.chart.column": "Grafiku i shtyllave",
+    "analytics.chart.distribution": "Shpërndarja e {label}",
+    "analytics.chart.map": "Grafiku i hartës",
     "powerbi.empty.alert": "Ngarko dhe përpuno një dataset para se të shkarkosh eksportet Power BI.",
+
 
 
     "dashboard.title": "Paneli",
@@ -1924,6 +2028,66 @@ _CHAT_TRANSLATIONS = {
     },
 }
 for _locale, _labels in _CHAT_TRANSLATIONS.items():
+    MESSAGES[_locale].update(_labels)
+
+# UI copy that is rendered by page templates or client-side result views.
+# Keep this in the same catalog so language changes update dynamic content too.
+_UI_COMPLETION = {
+    "en": {
+        "dashboard.kpi.rows": "Rows", "dashboard.kpi.columns": "Columns",
+        "upload.forecasting_optional": "Forecasting is optional: a dated numeric measure and enough historical observations are needed only for predictions. Cleaning, analysis, visualization, and exports work without those fields.",
+        "upload.template.general_csv": "General CSV", "upload.template.general_xlsx": "General XLSX", "upload.template.general_json": "General JSON",
+        "upload.template.retail_csv": "Retail CSV", "upload.template.retail_xlsx": "Retail XLSX", "upload.template.retail_json": "Retail JSON",
+        "upload.template.service_csv": "Service CSV", "upload.template.service_xlsx": "Service XLSX", "upload.template.service_json": "Service JSON",
+        "upload.inspect": "Inspect columns", "upload.save_process": "Save and process", "upload.processing": "Processing the dataset...",
+        "upload.mapping.header": "What FinSight AI understood", "upload.mapping.body": "High-confidence matches are selected automatically. Review uncertain matches and change any field before saving.",
+        "upload.mapping.business_field": "Business field", "upload.mapping.source_column": "Source column", "upload.mapping.confidence": "Confidence", "upload.mapping.reason": "Why it is used",
+        "upload.mapping.not_mapped": "Not mapped", "upload.mapping.no_candidate": "No confident candidate", "upload.mapping.none_detected": "none detected", "upload.mapping.detected_columns": "Detected columns",
+        "upload.preview.header": "Data preview", "upload.preview.rows": "Rows detected", "upload.preview.columns": "Columns detected", "upload.preview.after_cleaning": "Rows after cleaning preview", "upload.preview.empty": "No preview rows are available.",
+        "upload.cleaning.header": "Cleaning summary", "upload.saved": "Dataset saved. Cleaning, visualizations, and exports are ready.", "upload.inspect_first": "Inspect the file before saving it.", "upload.invalid_type": "Choose a CSV, XLSX, XLS, or JSON file.", "upload.file_too_large": "File is too large. Maximum size is {max_upload_mb} MB.", "upload.inspect_error": "We could not inspect this file.", "upload.process_error": "We could not process this file.",
+        "analytics.chart.column": "Column chart", "analytics.chart.totals_empty": "No additive numeric measures are available for a totals chart.", "analytics.chart.distribution": "Distribution of {label}", "analytics.chart.distribution_aria": "Distribution chart based on uploaded data", "analytics.chart.map": "Map chart", "analytics.chart.map_aria": "Map chart based on uploaded geographic values", "analytics.chart.total_label": "Total", "analytics.chart.rows": "rows", "analytics.city.popup": "Amount: {amount}",
+        "predict.unavailable": "Forecasting is currently unavailable for this dataset. Your data is still available for dashboard and analytics use.", "predict.no_dated_field": "No detected numeric field has enough dated observations for forecasting.", "predict.generate": "Generate forecast", "predict.model": "Model", "predict.first_value": "First forecast value", "predict.estimated_error": "estimated error", "predict.forecast_period": "Forecast period", "predict.predicted": "Predicted", "predict.actual_if_available": "Actual, if available", "predict.choose_date": "Choose a forecast start date.", "predict.generating": "Generating forecast...", "predict.not_enough_data": "Not enough historical data to generate a reliable forecast.", "predict.target": "Target", "predict.periods": "Forecast periods", "predict.evaluation": "Evaluation", "predict.risk_revenue": "Revenue", "predict.risk_expenses": "Expenses", "predict.risk_profit": "Profit", "predict.risk_error": "Risk classification could not be completed.",
+        "powerbi.empty.alert": "Upload and process a dataset before downloading Power BI exports.", "error.return_home": "Return home",
+    },
+    "sq": {
+        "dashboard.kpi.rows": "Rreshta", "dashboard.kpi.columns": "Kolona", "upload.forecasting_optional": "Parashikimi është opsional: duhen vetëm një masë numerike me datë dhe mjaft vëzhgime historike për parashikime. Pastrimi, analiza, vizualizimi dhe eksportet funksionojnë edhe pa këto fusha.",
+        "upload.template.general_csv": "CSV i përgjithshëm", "upload.template.general_xlsx": "XLSX i përgjithshëm", "upload.template.general_json": "JSON i përgjithshëm", "upload.template.retail_csv": "CSV me pakicë", "upload.template.retail_xlsx": "XLSX me pakicë", "upload.template.retail_json": "JSON me pakicë", "upload.template.service_csv": "CSV shërbimi", "upload.template.service_xlsx": "XLSX shërbimi", "upload.template.service_json": "JSON shërbimi",
+        "upload.inspect": "Inspekto kolonat", "upload.save_process": "Ruaj dhe përpuno", "upload.processing": "Duke përpunuar të dhënat...", "upload.mapping.header": "Çfarë kuptoi FinSight AI", "upload.mapping.body": "Përputhjet me besueshmëri të lartë zgjidhen automatikisht. Kontrolloni përputhjet e pasigurta dhe ndryshoni fushat para ruajtjes.", "upload.mapping.business_field": "Fusha e biznesit", "upload.mapping.source_column": "Kolona burimore", "upload.mapping.confidence": "Besueshmëria", "upload.mapping.reason": "Pse përdoret", "upload.mapping.not_mapped": "Pa përputhje", "upload.mapping.no_candidate": "Nuk ka kandidat të sigurt", "upload.mapping.none_detected": "asgjë nuk u zbulua", "upload.mapping.detected_columns": "Kolona të zbuluara", "upload.preview.header": "Pamje e të dhënave", "upload.preview.rows": "Rreshta të zbuluar", "upload.preview.columns": "Kolona të zbuluara", "upload.preview.after_cleaning": "Rreshta pas pastrimit", "upload.preview.empty": "Nuk ka rreshta për pamje.", "upload.cleaning.header": "Përmbledhje e pastrimit", "upload.saved": "Të dhënat u ruajtën. Pastrimi, vizualizimet dhe eksportet janë gati.", "upload.inspect_first": "Inspektoni skedarin para ruajtjes.", "upload.invalid_type": "Zgjidhni një skedar CSV, XLSX, XLS ose JSON.", "upload.file_too_large": "Skedari është shumë i madh. Madhësia maksimale është {max_upload_mb} MB.", "upload.inspect_error": "Skedari nuk mund të inspektohej.", "upload.process_error": "Skedari nuk mund të përpunohej.",
+        "analytics.chart.column": "Grafik kolonash", "analytics.chart.totals_empty": "Nuk ka masa numerike mbledhëse për grafik totalësh.", "analytics.chart.distribution": "Shpërndarja e {label}", "analytics.chart.distribution_aria": "Grafik shpërndarjeje nga të dhënat e ngarkuara", "analytics.chart.map": "Grafik harte", "analytics.chart.map_aria": "Grafik harte nga vlerat gjeografike të ngarkuara", "analytics.chart.total_label": "Total", "analytics.chart.rows": "rreshta", "analytics.city.popup": "Shuma: {amount}",
+        "predict.unavailable": "Parashikimi nuk është i disponueshëm për këtë grup të dhënash. Të dhënat mbeten të disponueshme për panelin dhe analizat.", "predict.no_dated_field": "Nuk u gjet fushë numerike me vëzhgime të mjaftueshme me datë për parashikim.", "predict.generate": "Gjenero parashikim", "predict.model": "Modeli", "predict.first_value": "Vlera e parë e parashikimit", "predict.estimated_error": "gabimi i vlerësuar", "predict.forecast_period": "Periudha e parashikimit", "predict.predicted": "E parashikuar", "predict.actual_if_available": "Aktualja, nëse ka", "predict.choose_date": "Zgjidhni datën e fillimit të parashikimit.", "predict.generating": "Duke gjeneruar parashikimin...", "predict.not_enough_data": "Nuk ka të dhëna historike të mjaftueshme për një parashikim të besueshëm.", "predict.target": "Objektivi", "predict.periods": "Periudhat e parashikimit", "predict.evaluation": "Vlerësimi", "predict.risk_revenue": "Të ardhurat", "predict.risk_expenses": "Shpenzimet", "predict.risk_profit": "Fitimi", "predict.risk_error": "Klasifikimi i rrezikut nuk mund të përfundonte.", "powerbi.empty.alert": "Ngarkoni dhe përpunoni një grup të dhënash para shkarkimit të eksporteve Power BI.", "error.return_home": "Kthehu në krye",
+    },
+    "de": {
+        "dashboard.kpi.rows": "Zeilen", "dashboard.kpi.columns": "Spalten", "upload.forecasting_optional": "Prognosen sind optional: Nur für Vorhersagen werden eine datierte numerische Kennzahl und ausreichend historische Beobachtungen benötigt. Bereinigung, Analyse, Visualisierung und Exporte funktionieren auch ohne diese Felder.", "upload.template.general_csv": "Allgemeine CSV", "upload.template.general_xlsx": "Allgemeine XLSX", "upload.template.general_json": "Allgemeine JSON", "upload.template.retail_csv": "Einzelhandel CSV", "upload.template.retail_xlsx": "Einzelhandel XLSX", "upload.template.retail_json": "Einzelhandel JSON", "upload.template.service_csv": "Service CSV", "upload.template.service_xlsx": "Service XLSX", "upload.template.service_json": "Service JSON", "upload.inspect": "Spalten prüfen", "upload.save_process": "Speichern und verarbeiten", "upload.processing": "Datensatz wird verarbeitet...", "upload.mapping.header": "Was FinSight AI erkannt hat", "upload.mapping.body": "Übereinstimmungen mit hoher Sicherheit werden automatisch gewählt. Prüfen Sie unsichere Zuordnungen vor dem Speichern.", "upload.mapping.business_field": "Geschäftsfeld", "upload.mapping.source_column": "Quellspalte", "upload.mapping.confidence": "Sicherheit", "upload.mapping.reason": "Verwendungsgrund", "upload.mapping.not_mapped": "Nicht zugeordnet", "upload.mapping.no_candidate": "Kein sicherer Kandidat", "upload.mapping.none_detected": "nichts erkannt", "upload.mapping.detected_columns": "Erkannte Spalten", "upload.preview.header": "Datenvorschau", "upload.preview.rows": "Erkannte Zeilen", "upload.preview.columns": "Erkannte Spalten", "upload.preview.after_cleaning": "Zeilen nach Reinigung", "upload.preview.empty": "Keine Vorschauzeilen verfügbar.", "upload.cleaning.header": "Reinigungsübersicht", "upload.saved": "Datensatz gespeichert. Reinigung, Visualisierungen und Exporte sind bereit.", "upload.inspect_first": "Prüfen Sie die Datei vor dem Speichern.", "upload.invalid_type": "Wählen Sie eine CSV-, XLSX-, XLS- oder JSON-Datei.", "upload.file_too_large": "Die Datei ist zu groß. Maximale Größe: {max_upload_mb} MB.", "upload.inspect_error": "Die Datei konnte nicht geprüft werden.", "upload.process_error": "Die Datei konnte nicht verarbeitet werden.", "analytics.chart.column": "Säulendiagramm", "analytics.chart.totals_empty": "Keine addierbaren numerischen Kennzahlen für ein Summendiagramm verfügbar.", "analytics.chart.distribution": "Verteilung von {label}", "analytics.chart.distribution_aria": "Verteilungsdiagramm aus den hochgeladenen Daten", "analytics.chart.map": "Kartendiagramm", "analytics.chart.map_aria": "Kartendiagramm aus hochgeladenen geografischen Werten", "analytics.chart.total_label": "Gesamt", "analytics.chart.rows": "Zeilen", "analytics.city.popup": "Betrag: {amount}", "predict.unavailable": "Prognosen sind für diesen Datensatz derzeit nicht verfügbar. Ihre Daten bleiben für Dashboard und Analyse verfügbar.", "predict.no_dated_field": "Kein numerisches Feld mit ausreichend datierten Beobachtungen für Prognosen erkannt.", "predict.generate": "Prognose erstellen", "predict.model": "Modell", "predict.first_value": "Erster Prognosewert", "predict.estimated_error": "geschätzter Fehler", "predict.forecast_period": "Prognosezeitraum", "predict.predicted": "Vorhergesagt", "predict.actual_if_available": "Tatsächlich, falls verfügbar", "predict.choose_date": "Wählen Sie ein Startdatum für die Prognose.", "predict.generating": "Prognose wird erstellt...", "predict.not_enough_data": "Nicht genügend historische Daten für eine zuverlässige Prognose.", "predict.target": "Ziel", "predict.periods": "Prognosezeiträume", "predict.evaluation": "Auswertung", "predict.risk_revenue": "Umsatz", "predict.risk_expenses": "Ausgaben", "predict.risk_profit": "Gewinn", "predict.risk_error": "Die Risikoklassifizierung konnte nicht abgeschlossen werden.", "powerbi.empty.alert": "Laden und verarbeiten Sie einen Datensatz, bevor Sie Power-BI-Exporte herunterladen.", "error.return_home": "Zur Startseite",
+    },
+    "zh": {
+        "dashboard.kpi.rows": "行", "dashboard.kpi.columns": "列", "upload.forecasting_optional": "预测是可选的：只有预测功能需要带日期的数值指标和足够的历史记录。即使没有这些字段，清洗、分析、可视化和导出仍可使用。", "upload.template.general_csv": "通用 CSV", "upload.template.general_xlsx": "通用 XLSX", "upload.template.general_json": "通用 JSON", "upload.template.retail_csv": "零售 CSV", "upload.template.retail_xlsx": "零售 XLSX", "upload.template.retail_json": "零售 JSON", "upload.template.service_csv": "服务 CSV", "upload.template.service_xlsx": "服务 XLSX", "upload.template.service_json": "服务 JSON", "upload.inspect": "检查列", "upload.save_process": "保存并处理", "upload.processing": "正在处理数据集...", "upload.mapping.header": "FinSight AI 的识别结果", "upload.mapping.body": "系统会自动选择高置信度匹配。保存前请检查不确定的匹配并修改字段。", "upload.mapping.business_field": "业务字段", "upload.mapping.source_column": "源列", "upload.mapping.confidence": "置信度", "upload.mapping.reason": "使用原因", "upload.mapping.not_mapped": "未映射", "upload.mapping.no_candidate": "没有可靠候选项", "upload.mapping.none_detected": "未检测到", "upload.mapping.detected_columns": "检测到的列", "upload.preview.header": "数据预览", "upload.preview.rows": "检测到的行", "upload.preview.columns": "检测到的列", "upload.preview.after_cleaning": "清洗后的行预览", "upload.preview.empty": "没有可用的预览行。", "upload.cleaning.header": "清洗摘要", "upload.saved": "数据集已保存。清洗、可视化和导出已就绪。", "upload.inspect_first": "请先检查文件再保存。", "upload.invalid_type": "请选择 CSV、XLSX、XLS 或 JSON 文件。", "upload.file_too_large": "文件过大。最大大小为 {max_upload_mb} MB。", "upload.inspect_error": "无法检查此文件。", "upload.process_error": "无法处理此文件。", "analytics.chart.column": "柱状图", "analytics.chart.totals_empty": "没有可用于总计图的可加数值指标。", "analytics.chart.distribution": "{label} 的分布", "analytics.chart.distribution_aria": "基于上传数据的分布图", "analytics.chart.map": "地图", "analytics.chart.map_aria": "基于上传地理值的地图", "analytics.chart.total_label": "总计", "analytics.chart.rows": "行", "analytics.city.popup": "金额：{amount}", "predict.unavailable": "当前无法为此数据集提供预测。您的数据仍可用于仪表板和分析。", "predict.no_dated_field": "没有检测到具有足够日期观测值的数值字段，无法进行预测。", "predict.generate": "生成预测", "predict.model": "模型", "predict.first_value": "首个预测值", "predict.estimated_error": "估计误差", "predict.forecast_period": "预测期间", "predict.predicted": "预测值", "predict.actual_if_available": "实际值（如有）", "predict.choose_date": "请选择预测开始日期。", "predict.generating": "正在生成预测...", "predict.not_enough_data": "历史数据不足，无法生成可靠预测。", "predict.target": "目标", "predict.periods": "预测期间数", "predict.evaluation": "评估", "predict.risk_revenue": "收入", "predict.risk_expenses": "支出", "predict.risk_profit": "利润", "predict.risk_error": "无法完成风险分类。", "powerbi.empty.alert": "请先上传并处理数据集，然后下载 Power BI 导出文件。", "error.return_home": "返回首页",
+    },
+}
+for _locale, _labels in _UI_COMPLETION.items():
+    MESSAGES[_locale].update(_labels)
+
+# Complete keys added by earlier page passes in every non-English catalog.
+_LOCALE_GAPS = {
+    "sq": {
+        "nav.settings": "Profili / Cilësimet",
+    },
+    "de": {
+        "nav.settings": "Profil / Einstellungen", "analytics.category_summary.title": "Kategorien", "analytics.category_summary.unique": "einzigartig", "analytics.chart.area": "Flächendiagramm", "analytics.chart.donut": "Ringdiagramm", "analytics.numeric_summary.title": "Numerische Übersicht", "analytics.numeric_summary.col.measure": "Kennzahl", "analytics.numeric_summary.col.count": "Anzahl", "analytics.numeric_summary.col.mean": "Mittelwert", "analytics.numeric_summary.col.median": "Median", "analytics.numeric_summary.col.min": "Min", "analytics.numeric_summary.col.max": "Max", "analytics.numeric_summary.col.std": "Std.-Abw.", "analytics.numeric_summary.col.sum": "Summe", "predict.analysis.title": "Erkannte Analysemodelle", "predict.analysis.subtitle": "Diese Ergebnisse basieren auf der Struktur und den Werten des aktiven Uploads. Ein Klassifikator wird nur bei einem geeigneten kategorialen Ziel angezeigt.", "predict.empty.title": "Daten für Prognosen hochladen", "predict.error.no_additional_model": "Keine weitere erkannte numerische Kennzahl ist prognosefähig.", "predict.horizon.label": "Zeiträume", "predict.other_measures.title": "Weitere erkannte Kennzahlen", "predict.other_measures.subtitle": "Wählen Sie die Kennzahl, die Sie prognostizieren möchten.", "risk.date.label": "Zu klassifizierendes Datum", "settings.account.title": "Kontoprofil", "settings.footer_info": "Verwenden Sie die Sprachauswahl im Kopfbereich, um die Sprache zu ändern. Ihr Passwort wird als sicherer Hash gespeichert und hier nie angezeigt.", "settings.label.company": "Unternehmen", "settings.label.formats": "Unterstützte Formate", "settings.label.isolation": "Datentrennung", "settings.label.language": "Aktuelle Sprache", "settings.label.max_size": "Maximale Dateigröße", "settings.label.member_since": "Mitglied seit", "settings.label.name": "Name", "settings.subtitle": "Überprüfen Sie die Konto- und Upload-Einstellungen dieses Arbeitsbereichs.", "settings.value.isolation": "Unternehmensarbeitsbereich", "settings.workspace.title": "Datenarbeitsbereich", "upload.cleaning.title": "Reinigungsübersicht", "upload.download_templates": "Vorlagen herunterladen", "upload.download_templates_body": "Nur Beispiele; sie werden nie als Ihr Datensatz verwendet. Jede Vorlage wird von diesem Upload unterstützt.", "upload.inspect_columns": "Spalten prüfen", "upload.mapping.subtitle": "Übereinstimmungen mit hoher Sicherheit werden automatisch gewählt. Prüfen Sie unsichere Zuordnungen vor dem Speichern.", "upload.mapping.title": "Was FinSight AI erkannt hat", "upload.preview.title": "Datenvorschau", "upload.supported_files": "Unterstützte Dateien", "upload.supported_files_body": "CSV-, XLSX-, XLS- und JSON-Dateien bis {max_upload_mb} MB. Jeder gültige Tabellendatensatz wird unterstützt.",
+    },
+    "zh": {
+        "nav.database": "数据库", "nav.settings": "个人资料 / 设置", "analytics.category_summary.title": "类别计数", "analytics.category_summary.unique": "唯一", "analytics.chart.area": "面积图", "analytics.chart.donut": "环形图", "analytics.numeric_summary.title": "数值摘要", "analytics.numeric_summary.col.measure": "指标", "analytics.numeric_summary.col.count": "计数", "analytics.numeric_summary.col.mean": "平均值", "analytics.numeric_summary.col.median": "中位数", "analytics.numeric_summary.col.min": "最小值", "analytics.numeric_summary.col.max": "最大值", "analytics.numeric_summary.col.std": "标准差", "analytics.numeric_summary.col.sum": "总和", "predict.analysis.title": "检测到的分析模型", "predict.analysis.subtitle": "这些结果基于当前上传数据的结构和值。只有检测到合适的分类目标时才会显示分类器。", "predict.empty.title": "上传数据以开始预测", "predict.error.no_additional_model": "没有其他可预测的数值指标。", "predict.horizon.label": "期间", "predict.other_measures.title": "其他检测到的指标", "predict.other_measures.subtitle": "选择要预测的业务指标。", "risk.date.label": "要分类的日期", "settings.account.title": "账户资料", "settings.footer_info": "使用页眉中的语言选择器更改界面语言。您的密码以安全哈希存储，不会在此显示。", "settings.label.company": "公司", "settings.label.formats": "支持的格式", "settings.label.isolation": "数据隔离", "settings.label.language": "当前语言", "settings.label.max_size": "最大文件大小", "settings.label.member_since": "加入时间", "settings.label.name": "姓名", "settings.subtitle": "查看此工作区使用的账户和上传设置。", "settings.value.isolation": "公司工作区", "settings.workspace.title": "数据工作区", "upload.cleaning.title": "清洗摘要", "upload.download_templates": "下载模板", "upload.download_templates_body": "仅供示例，不会用作您的上传数据集。每个模板都支持此上传流程。", "upload.inspect_columns": "检查列", "upload.mapping.subtitle": "系统会自动选择高置信度匹配。保存前请检查不确定的匹配并修改字段。", "upload.mapping.title": "FinSight AI 的识别结果", "upload.preview.title": "数据预览", "upload.supported_files": "支持的文件", "upload.supported_files_body": "支持最大 {max_upload_mb} MB 的 CSV、XLSX、XLS 和 JSON 文件。任何有效的表格数据集都可以上传。",
+    },
+}
+for _locale, _labels in _LOCALE_GAPS.items():
+    MESSAGES[_locale].update(_labels)
+
+_DYNAMIC_LABELS = {
+    "en": {"upload.clean.original_rows": "Original rows", "upload.clean.rows_saved": "Rows saved", "upload.clean.columns": "Columns detected", "upload.clean.duplicates": "Duplicate rows detected", "upload.clean.duplicates_removed": "Duplicates removed", "upload.clean.blank_removed": "Blank rows removed", "upload.clean.empty_columns": "Empty columns removed", "upload.clean.invalid_dates": "Invalid dates", "upload.clean.invalid_numbers": "Invalid numeric values", "upload.clean.missing_detected": "Missing values detected", "upload.clean.missing_handled": "Missing values handled", "upload.clean.missing_remaining": "Missing values remaining", "upload.confidence.high": "high", "upload.confidence.medium": "medium", "upload.confidence.low": "low", "upload.confidence.missing": "missing"},
+    "sq": {"upload.clean.original_rows": "Rreshta origjinalë", "upload.clean.rows_saved": "Rreshta të ruajtur", "upload.clean.columns": "Kolona të zbuluara", "upload.clean.duplicates": "Rreshta dublikatë", "upload.clean.duplicates_removed": "Dublikata të hequra", "upload.clean.blank_removed": "Rreshta bosh të hequr", "upload.clean.empty_columns": "Kolona bosh të hequra", "upload.clean.invalid_dates": "Data të pavlefshme", "upload.clean.invalid_numbers": "Vlera numerike të pavlefshme", "upload.clean.missing_detected": "Vlera që mungojnë", "upload.clean.missing_handled": "Vlera të trajtuara", "upload.clean.missing_remaining": "Vlera që mungojnë ende", "upload.confidence.high": "e lartë", "upload.confidence.medium": "mesatare", "upload.confidence.low": "e ulët", "upload.confidence.missing": "mungon"},
+    "de": {"upload.clean.original_rows": "Ursprüngliche Zeilen", "upload.clean.rows_saved": "Gespeicherte Zeilen", "upload.clean.columns": "Erkannte Spalten", "upload.clean.duplicates": "Doppelte Zeilen", "upload.clean.duplicates_removed": "Entfernte Duplikate", "upload.clean.blank_removed": "Entfernte leere Zeilen", "upload.clean.empty_columns": "Entfernte leere Spalten", "upload.clean.invalid_dates": "Ungültige Daten", "upload.clean.invalid_numbers": "Ungültige numerische Werte", "upload.clean.missing_detected": "Erkannte fehlende Werte", "upload.clean.missing_handled": "Behandelte fehlende Werte", "upload.clean.missing_remaining": "Verbleibende fehlende Werte", "upload.confidence.high": "hoch", "upload.confidence.medium": "mittel", "upload.confidence.low": "niedrig", "upload.confidence.missing": "fehlt"},
+    "zh": {"upload.clean.original_rows": "原始行数", "upload.clean.rows_saved": "已保存行数", "upload.clean.columns": "检测到的列", "upload.clean.duplicates": "重复行数", "upload.clean.duplicates_removed": "已删除重复项", "upload.clean.blank_removed": "已删除空行", "upload.clean.empty_columns": "已删除空列", "upload.clean.invalid_dates": "无效日期", "upload.clean.invalid_numbers": "无效数值", "upload.clean.missing_detected": "检测到的缺失值", "upload.clean.missing_handled": "已处理缺失值", "upload.clean.missing_remaining": "剩余缺失值", "upload.confidence.high": "高", "upload.confidence.medium": "中", "upload.confidence.low": "低", "upload.confidence.missing": "缺失"},
+}
+for _locale, _labels in _DYNAMIC_LABELS.items():
     MESSAGES[_locale].update(_labels)
 
 # Prediction-page AI sections. Kept separate so every supported locale has
