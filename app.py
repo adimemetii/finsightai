@@ -1684,9 +1684,12 @@ def dashboard():
                 if _visual_identifier_like(str(column), values):
                     continue
                 additive = _visual_additive_measure(str(column))
+                aggregation = "total" if additive else "average"
+                normalized_name = re.sub(r"[^a-z0-9]+", "_", str(column).strip().lower()).strip("_")
                 numeric_metrics.append({
                     "name": column,
-                    "label": f"{str(column).replace('_', ' ').title()} {'total' if additive else 'average'}",
+                    "label": f"{str(column).replace('_', ' ').title()} {aggregation}",
+                    "translation_key": f"dashboard.metric.{normalized_name}.{aggregation}",
                     "value": float(values.sum() if additive else values.mean()),
                 })
     date_range = ""
