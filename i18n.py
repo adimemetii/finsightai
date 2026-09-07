@@ -2136,7 +2136,7 @@ def set_locale(loc: str) -> bool:
     return True
 
 
-def t(key: str, **kwargs: Any) -> str:
+def t(key: str, default: Optional[str] = None, **kwargs: Any) -> str:
     """Resolve a translation key in the active locale.
 
     Falls back to English for missing keys, then to the key itself, so
@@ -2145,7 +2145,7 @@ def t(key: str, **kwargs: Any) -> str:
     loc = get_locale()
     text = MESSAGES.get(loc, {}).get(key)
     if text is None:
-        text = _EN.get(key, key)
+        text = _EN.get(key, default if default is not None else key)
     if kwargs:
         try:
             return text.format(**kwargs)

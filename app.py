@@ -597,10 +597,21 @@ def _load_active_cleaned_dataset(user_id: int, dataset_id: int) -> pd.DataFrame:
 
 def _active_dataset_and_frame(user_id: int) -> tuple[int | None, pd.DataFrame | None]:
     """Ensure the frame/model in memory belongs to this user's current upload."""
-    dataset_id = _current_dataset_id(user_id)
+    state = session_data.get(user_id, {})
+    try:
+        dataset_id = _current_dataset_id(user_id)
+    except mysql.connector.Error:
+        cached_id = state.get("dataset_id")
+        cached_frame = state.get("df")
+        if cached_id is not None and isinstance(cached_frame, pd.DataFrame):
+            app.logger.warning(
+                "Using cached dataset %s for user %s while MySQL is unavailable",
+                cached_id, user_id,
+            )
+            return int(cached_id), cached_frame
+        raise
     if dataset_id is None:
         return None, None
-    state = session_data.get(user_id, {})
     if state.get("dataset_id") != dataset_id:
         return dataset_id, _load_active_cleaned_dataset(user_id, dataset_id)
     return dataset_id, state.get("df")
@@ -1994,7 +2005,11 @@ def _visualization_data(df: pd.DataFrame, types: dict[str, str] | None = None) -
 def analytics():
     """Render real visualizations derived from the active uploaded dataset."""
     user_id = _session_user_id()
-    _, df = _active_dataset_and_frame(user_id)
+    try:
+        _, df = _active_dataset_and_frame(user_id)
+    except mysql.connector.Error:
+        app.logger.exception("Database unavailable while loading analytics for user %s", user_id)
+        df = None
     empty_context = {
         "company_name": session["company_name"], "has_data": False,
         "monthly": [], "area_data": [], "categories": [], "column_data": [],
@@ -2899,7 +2914,11 @@ def predict():
     company_id = _session_company_id()
 
     if request.method == "GET":
-        _, df = _active_dataset_and_frame(user_id)
+        try:
+            _, df = _active_dataset_and_frame(user_id)
+        except mysql.connector.Error:
+            app.logger.exception("Database unavailable while loading prediction page for user %s", user_id)
+            df = None
         analysis = _analysis_context(user_id)
         analysis_types = (analysis or {}).get("types", {})
         date_column = _date_column_for(df, analysis_types)
