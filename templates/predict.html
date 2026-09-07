@@ -27,7 +27,7 @@
 <div class="row g-4">
   <div class="col-xl-6">
     <section class="card h-100 border-0 shadow-sm">
-      <div class="card-header bg-gradient border-0"><h2 class="card-title mb-0"><i class="fas fa-arrow-trend-up text-success me-2"></i>{{ t('predict.result.title', target=primary_target|replace('_', ' ')|title) }}</h2></div>
+      <div class="card-header bg-gradient border-0"><h2 class="card-title mb-0"><i class="fas fa-arrow-trend-up text-success me-2"></i>{{ t('predict.result.title', target=t('predict.model.' ~ primary_target, primary_target|replace('_', ' ')|title)) }}</h2></div>
       <div class="card-body">
         {% if primary_target %}
         <p class="text-muted">{{ t('predict.subtitle.lead') }}</p>
@@ -48,7 +48,7 @@
         {% if expense_targets %}
         <p class="text-muted">{{ t('predict.other_measures.subtitle') }}</p>
         <div class="row g-3 align-items-end">
-          <div class="col-md-5"><label class="form-label" for="expenseTarget">{{ t('predict.target.label') }}</label><select id="expenseTarget" class="form-select">{% for target in expense_targets %}<option value="{{ target }}">{{ target|replace('_', ' ')|title }}</option>{% endfor %}</select></div>
+          <div class="col-md-5"><label class="form-label" for="expenseTarget">{{ t('predict.target.label') }}</label><select id="expenseTarget" class="form-select">{% for target in expense_targets %}<option value="{{ target }}">{{ t('predict.model.' ~ target, target|replace('_', ' ')|title) }}</option>{% endfor %}</select></div>
           <div class="col-md-3"><label class="form-label" for="expenseDate">{{ t('predict.date.label') }}</label><input id="expenseDate" class="form-control" type="date" min="{{ risk_min_date }}" value="{{ risk_default_date }}"></div>
           <div class="col-md-2"><label class="form-label" for="expenseHorizon">{{ t('predict.horizon.label') }}</label><input id="expenseHorizon" class="form-control" type="number" min="1" max="24" value="3"></div>
           <div class="col-md-2"><button id="expenseForecast" class="btn btn-primary w-100" title="{{ t('predict.generate') }}"><i class="fas fa-calculator"></i><span class="visually-hidden">{{ t('predict.generate') }}</span></button></div>
@@ -77,7 +77,7 @@
       {% for section in analysis.sections %}
       <div class="col-md-6">
         <div class="border rounded p-3 h-100">
-          <div class="d-flex justify-content-between gap-2"><strong>{{ section.target|replace('_', ' ')|title }}</strong><span class="badge bg-{{ 'primary' if section.kind == 'regression' else 'warning' }}">{{ section.kind|title }}</span></div>
+          <div class="d-flex justify-content-between gap-2"><strong>{{ t('predict.model.' ~ section.target, section.target|replace('_', ' ')|title) }}</strong><span class="badge bg-{{ 'primary' if section.kind == 'regression' else 'warning' }}">{{ section.kind|title }}</span></div>
           {% if section.error %}<p class="text-muted small mt-2 mb-0">{{ section.error }}</p>{% else %}<div class="h5 text-primary mt-2 mb-1">{{ section.prediction_label }}</div><small class="text-muted">{{ section.model_name }}{% if section.metric_name and section.metric_value is not none %} · {{ section.metric_name }} {{ section.metric_value|round(2) }}{% endif %}</small>{% endif %}
         </div>
       </div>

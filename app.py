@@ -2847,10 +2847,7 @@ def _forecast_status(user_id: int, df: pd.DataFrame | None) -> dict[str, object]
     types = _analysis_types_for(df)
     date_column = _date_column_for(df, types)
     if not date_column:
-        status["warning"] = (
-            "Forecasting is currently unavailable because no usable date column was found. "
-            "Your data is still available for dashboard and analytics use."
-        )
+        status["warning"] = _message("predict.warning.no_date_column")
         return status
 
     dates = pd.to_datetime(df[date_column], errors="coerce")
@@ -2880,11 +2877,7 @@ def _forecast_status(user_id: int, df: pd.DataFrame | None) -> dict[str, object]
             f" {status['invalid_dates']} date values could not be parsed."
             if status["invalid_dates"] else ""
         )
-        status["warning"] = (
-            "Forecasting is currently unavailable because no valid dated observations were found."
-            f"{invalid_note} Check the date column and supported date formats. Your data is still "
-            "available for dashboard and analytics use."
-        )
+        status["warning"] = _message("predict.warning.no_dates", invalid_note=invalid_note)
     else:
         best_count = max(counts.values(), default=0)
         if best_count < MIN_FORECAST_OBSERVATIONS:
@@ -2892,18 +2885,14 @@ def _forecast_status(user_id: int, df: pd.DataFrame | None) -> dict[str, object]
                 f" {status['invalid_dates']} date values could not be parsed."
                 if status["invalid_dates"] else ""
             )
-            status["warning"] = (
-                f"Forecasting is currently unavailable because the uploaded dataset contains only "
-                f"{best_count} valid dated numeric observations; at least {MIN_FORECAST_OBSERVATIONS} "
-                f"are needed for a reliable forecast.{invalid_note} Your data has still been successfully "
-                "loaded and can be used in the dashboard and analytics."
+            status["warning"] = _message(
+                "predict.warning.insufficient",
+                count=best_count,
+                minimum=MIN_FORECAST_OBSERVATIONS,
+                invalid_note=invalid_note,
             )
         elif not _forecast_targets(df):
-            status["warning"] = (
-                "Forecasting is currently unavailable because no actual numeric column has enough "
-                "dated observations and variation for a reliable model. Your data is still available "
-                "for dashboard and analytics use."
-            )
+            status["warning"] = _message("predict.warning.no_target")
     return status
 
 
