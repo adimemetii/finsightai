@@ -27,6 +27,7 @@
 .finsight-chat-messages { min-width:0; }
 .chat-message { min-width:0; overflow-wrap:anywhere; word-break:break-word; }
 .chat-message.assistant { max-width:94%; }
+.finsight-chat-header #chatClose { aspect-ratio:1 / 1; flex:0 0 2.2rem; height:2.2rem; min-height:2.2rem; min-width:2.2rem; padding:0; width:2.2rem; }
 
 /* Keep the navbar CTA readable: it must never shrink into its blue surface. */
 .public-actions .get-started-btn { align-items:center; display:inline-flex; flex:0 0 auto; gap:.35rem; justify-content:center; line-height:1.2; overflow:visible; padding:.55rem .85rem; white-space:nowrap; }
