@@ -225,8 +225,8 @@ MAX_DATA_COLUMNS = max(1, min(_int_env("MAX_DATA_COLUMNS", 200), 1000))
 MAX_DATA_ROWS = max(1, min(_int_env("MAX_DATA_ROWS", 1_000_000), 2_000_000))
 MAX_MODEL_ROWS = max(100, min(_int_env("MAX_MODEL_ROWS", 10_000), 50_000))
 GROQ_API_KEY = _env("GROQ_FINSIGHTAI_API_KEY")
-PRIMARY_GROQ_MODEL = "llama-3.1-70b-versatile"
-FALLBACK_GROQ_MODEL = "mixtral-8x7b-32768"
+PRIMARY_GROQ_MODEL = "mixtral-8x7b-32768"
+FALLBACK_GROQ_MODEL = "llama3-8b-8192"
 GROQ_TIMEOUT = max(10, min(120, _int_env("GROQ_TIMEOUT", 60)))
 
 
