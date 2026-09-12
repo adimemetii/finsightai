@@ -225,8 +225,9 @@ MAX_DATA_COLUMNS = max(1, min(_int_env("MAX_DATA_COLUMNS", 200), 1000))
 MAX_DATA_ROWS = max(1, min(_int_env("MAX_DATA_ROWS", 1_000_000), 2_000_000))
 MAX_MODEL_ROWS = max(100, min(_int_env("MAX_MODEL_ROWS", 10_000), 50_000))
 GROQ_API_KEY = _env("GROQ_FINSIGHTAI_API_KEY")
-GROQ_MODEL = _env("GROQ_MODEL", "llama3-70b-8192")
-GROQ_TIMEOUT = max(10, min(120, _int_env("GROQ_TIMEOUT", 45)))
+PRIMARY_GROQ_MODEL = "llama-3.1-70b-versatile"
+FALLBACK_GROQ_MODEL = "mixtral-8x7b-32768"
+GROQ_TIMEOUT = max(10, min(120, _int_env("GROQ_TIMEOUT", 60)))
 
 
 
@@ -770,61 +771,56 @@ def _chat_data_context(user_id: int) -> str:
 
 
 def _groq_answer(messages: list[dict[str, str]]) -> str:
-    """Call Groq's OpenAI-compatible endpoint without exposing the key."""
+    """Call Groq's OpenAI-compatible endpoint with a fallback mechanism for stability."""
     api_key = os.environ.get("GROQ_FINSIGHTAI_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("The AI assistant is not configured on this deployment.")
-    payload = json.dumps({
-        "model": GROQ_MODEL,
-        "messages": messages,
-        "temperature": 0.2,
-        "max_tokens": 2000,
-    }).encode("utf-8")
-    request_obj = Request(
-        "https://api.groq.com/openai/v1/chat/completions",
-        data=payload,
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        },
-        method="POST",
-    )
-    try:
-        with urlopen(request_obj, timeout=GROQ_TIMEOUT) as response:
-            body = json.loads(response.read().decode("utf-8"))
-    except HTTPError as exc:
+
+    models_to_try = [PRIMARY_GROQ_MODEL, FALLBACK_GROQ_MODEL]
+    last_exception = None
+
+    for model in models_to_try:
+        try:
+            payload = json.dumps({
+                "model": model,
+                "messages": messages,
+                "temperature": 0.2,
+                "max_tokens": 2000,
+            }).encode("utf-8")
+
+            request_obj = Request(
+                "https://api.groq.com/openai/v1/chat/completions",
+                data=payload,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+                method="POST",
+            )
+
+            with urlopen(request_obj, timeout=GROQ_TIMEOUT) as response:
+                body = json.loads(response.read().decode("utf-8"))
+                content = body["choices"][0]["message"]["content"]
+                if isinstance(content, str) and content.strip():
+                    return content.strip()[:12000]
+        except Exception as exc:
+            last_exception = exc
+            app.logger.warning("Groq model %s failed, trying next fallback: %s", model, str(exc))
+            continue
+
+    # If all models fail, report the last error
+    if isinstance(last_exception, HTTPError):
         detail = ""
         try:
-            error_body = json.loads(exc.read().decode("utf-8"))
+            error_body = json.loads(last_exception.read().decode("utf-8"))
             error_value = error_body.get("error") if isinstance(error_body, dict) else None
-            if isinstance(error_value, dict):
-                detail = str(error_value.get("message") or "")
-            elif error_value:
-                detail = str(error_value)
-        except (OSError, ValueError, TypeError):
+            detail = str(error_value.get("message") if isinstance(error_value, dict) else error_value) if error_value else ""
+        except:
             pass
-        app.logger.warning("Groq request returned HTTP %s: %s", exc.code, detail[:500])
-        if exc.code == 401:
-            raise RuntimeError("The AI assistant credentials are invalid.") from exc
-        if exc.code == 429:
-            raise RuntimeError("The AI assistant is temporarily busy. Please try again in a moment.") from exc
-        raise RuntimeError(f"The AI assistant could not complete that request (Error {exc.code}). {detail}") from exc
-    except (URLError, TimeoutError) as exc:
-        app.logger.warning("Groq request failed: %s", type(exc).__name__)
-        raise RuntimeError("The AI assistant is temporarily unavailable. Please try again.") from exc
-    except (ValueError, OSError) as exc:
-        app.logger.warning("Groq response could not be read: %s", type(exc).__name__)
-        raise RuntimeError("The AI assistant returned an invalid response.") from exc
+        raise RuntimeError(f"The AI assistant could not complete the request (HTTP {last_exception.code}): {detail}") from last_exception
 
-    try:
-        content = body["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError) as exc:
-        app.logger.warning("Groq response did not contain assistant content")
-        raise RuntimeError("The AI assistant returned an empty response.") from exc
-    if not isinstance(content, str) or not content.strip():
-        raise RuntimeError("The AI assistant returned an empty response.")
-    return content.strip()[:12000]
+    raise RuntimeError(f"The AI assistant is currently unavailable. Last error: {str(last_exception)}") from last_exception
 
 
 # =====================================================
