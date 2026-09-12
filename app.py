@@ -225,7 +225,7 @@ MAX_DATA_COLUMNS = max(1, min(_int_env("MAX_DATA_COLUMNS", 200), 1000))
 MAX_DATA_ROWS = max(1, min(_int_env("MAX_DATA_ROWS", 1_000_000), 2_000_000))
 MAX_MODEL_ROWS = max(100, min(_int_env("MAX_MODEL_ROWS", 10_000), 50_000))
 GROQ_API_KEY = _env("GROQ_FINSIGHTAI_API_KEY")
-GROQ_MODEL = _env("GROQ_MODEL", "llama-3.1-70b-versatile")
+GROQ_MODEL = _env("GROQ_MODEL", "llama3-70b-8192")
 GROQ_TIMEOUT = max(10, min(120, _int_env("GROQ_TIMEOUT", 45)))
 
 
@@ -809,7 +809,7 @@ def _groq_answer(messages: list[dict[str, str]]) -> str:
             raise RuntimeError("The AI assistant credentials are invalid.") from exc
         if exc.code == 429:
             raise RuntimeError("The AI assistant is temporarily busy. Please try again in a moment.") from exc
-        raise RuntimeError("The AI assistant could not complete that request.") from exc
+        raise RuntimeError(f"The AI assistant could not complete that request (Error {exc.code}). {detail}") from exc
     except (URLError, TimeoutError) as exc:
         app.logger.warning("Groq request failed: %s", type(exc).__name__)
         raise RuntimeError("The AI assistant is temporarily unavailable. Please try again.") from exc
