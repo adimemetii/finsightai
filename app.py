@@ -769,29 +769,31 @@ def _chat_data_context(user_id: int) -> str:
     return "\n".join(lines)[:10000]
 
 
-def _groq_answer(messages: list[dict[str, str]]) -> str:
-    """Call Groq's API using the gpt-oss-120b model as requested and verified."""
-    api_key = os.environ.get("GROQ_FINSIGHTAI_API_KEY", "").strip()
+def _ai_answer(messages: list[dict[str, str]]) -> str:
+    """Call OpenRouter API using the professional high-speed configuration."""
+    api_key = os.environ.get("OPENROUTER_FINSIGHTAI_API_KEY", "").strip()
     if not api_key:
-        raise RuntimeError("The AI assistant API key is missing in Render (GROQ_FINSIGHTAI_API_KEY).")
+        raise RuntimeError("The AI assistant API key is missing in Render (OPENROUTER_FINSIGHTAI_API_KEY).")
 
-    # Using the exact model ID from Groq documentation provided by user
-    model_id = "openai/gpt-oss-120b"
+    # High-speed, reliable model from OpenRouter
+    model_id = "google/gemini-flash-1.5"
 
     payload = json.dumps({
         "model": model_id,
         "messages": messages,
-        "temperature": 0.2,
-        "max_tokens": 2000,
+        "temperature": 0.3,
+        "max_tokens": 1500,
     }).encode("utf-8")
 
     request_obj = Request(
-        "https://api.groq.com/openai/v1/chat/completions",
+        "https://openrouter.ai/api/v1/chat/completions",
         data=payload,
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
             "Accept": "application/json",
+            "HTTP-Referer": "https://finsightai-3ea6.onrender.com",
+            "X-Title": "FinSight AI",
         },
         method="POST",
     )
@@ -810,7 +812,7 @@ def _groq_answer(messages: list[dict[str, str]]) -> str:
             detail = str(error_value.get("message") if isinstance(error_value, dict) else error_value) if error_value else ""
         except:
             pass
-        raise RuntimeError(f"Groq API Error (HTTP {exc.code}): {detail}") from exc
+        raise RuntimeError(f"AI API Error (HTTP {exc.code}): {detail}") from exc
     except Exception as exc:
         raise RuntimeError(f"The AI assistant is unavailable: {str(exc)}") from exc
 
@@ -865,7 +867,7 @@ def chat():
     messages = [{"role": "system", "content": system}, *history[-10:],
                 {"role": "user", "content": message}]
     try:
-        answer = _groq_answer(messages)
+        answer = _ai_answer(messages)
     except RuntimeError as exc:
         return jsonify({"error": str(exc)}), 503
     history.extend([{"role": "user", "content": message},
