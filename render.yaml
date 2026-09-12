@@ -15,9 +15,9 @@ services:
       - key: OPENROUTER_FINSIGHTAI_API_KEY
         sync: false
       - key: OPENROUTER_MODEL
-        value: openrouter/free
+        value: openai/gpt-4o-mini
       - key: GROQ_TIMEOUT
-        value: "45"
+        value: "25"
       - key: DB_HOST
         sync: false
       - key: DB_PORT

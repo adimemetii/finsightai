@@ -226,8 +226,8 @@ MAX_DATA_ROWS = max(1, min(_int_env("MAX_DATA_ROWS", 1_000_000), 2_000_000))
 MAX_MODEL_ROWS = max(100, min(_int_env("MAX_MODEL_ROWS", 10_000), 50_000))
 OPENROUTER_API_KEY = _env("OPENROUTER_API_KEY")
 OPENROUTER_FINSIGHTAI_API_KEY = _env("OPENROUTER_FINSIGHTAI_API_KEY")
-OPENROUTER_MODEL = _env("OPENROUTER_MODEL", "openrouter/free")
-GROQ_TIMEOUT = max(10, min(120, _int_env("GROQ_TIMEOUT", 60)))
+OPENROUTER_MODEL = _env("OPENROUTER_MODEL", "openai/gpt-4o-mini")
+GROQ_TIMEOUT = max(10, min(60, _int_env("GROQ_TIMEOUT", 25)))
 
 
 
@@ -780,10 +780,10 @@ def _ai_answer(messages: list[dict[str, str]]) -> str:
         raise RuntimeError("The AI assistant API key is missing in Render. Set OPENROUTER_FINSIGHTAI_API_KEY.")
 
     payload = json.dumps({
-        "model": os.environ.get("OPENROUTER_MODEL", OPENROUTER_MODEL).strip() or "openrouter/free",
+        "model": os.environ.get("OPENROUTER_MODEL", OPENROUTER_MODEL).strip() or "openai/gpt-4o-mini",
         "messages": messages,
         "temperature": 0.2,
-        "max_tokens": 1200,
+        "max_tokens": 900,
     }).encode("utf-8")
 
     request_obj = Request(

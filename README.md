@@ -130,7 +130,7 @@ SECRET_KEY=change-me
 
 # OpenRouter backend assistant (never expose this in frontend code)
 OPENROUTER_FINSIGHTAI_API_KEY=
-OPENROUTER_MODEL=openrouter/free
+OPENROUTER_MODEL=openai/gpt-4o-mini
 GROQ_TIMEOUT=45
 
 DB_HOST=localhost
@@ -239,7 +239,7 @@ starts Gunicorn on Render's `$PORT`, and checks `/healthz`. The Flask module
 initializes/upgrades the MySQL schema when the production process starts. Set
 `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_SSL_CA`, and
 `OPENROUTER_FINSIGHTAI_API_KEY` as Render environment variables. `OPENROUTER_MODEL` can
-select the model; the default is `openrouter/free`.
+select the model; the default is `openai/gpt-4o-mini` for lower response latency.
 
 ## Troubleshooting
 
