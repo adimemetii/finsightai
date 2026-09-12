@@ -770,12 +770,13 @@ def _chat_data_context(user_id: int) -> str:
 
 
 def _groq_answer(messages: list[dict[str, str]]) -> str:
-    """Call Groq's API using the gpt-oss-120b model as verified in GroqCloud."""
+    """Call Groq's API using the Llama 3.3 70B model for maximum reliability and speed."""
     api_key = os.environ.get("GROQ_FINSIGHTAI_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("The AI assistant API key is missing in Render (GROQ_FINSIGHTAI_API_KEY).")
 
-    model_id = "openai/gpt-oss-120b"
+    # llama-3.3-70b-versatile is the flagship production model available to all Groq users
+    model_id = "llama-3.3-70b-versatile"
 
     payload = json.dumps({
         "model": model_id,
@@ -809,6 +810,10 @@ def _groq_answer(messages: list[dict[str, str]]) -> str:
             detail = str(error_value.get("message") if isinstance(error_value, dict) else error_value) if error_value else ""
         except:
             pass
+        if exc.code == 401:
+            raise RuntimeError("Invalid API Key. Please check your GROQ_FINSIGHTAI_API_KEY in Render.") from exc
+        if exc.code == 403:
+            raise RuntimeError(f"Permission denied for model {model_id}. (HTTP 403): {detail}") from exc
         raise RuntimeError(f"Groq error (HTTP {exc.code}): {detail}") from exc
     except Exception as exc:
         raise RuntimeError(f"The AI assistant is unavailable: {str(exc)}") from exc
