@@ -224,8 +224,8 @@ ALLOWED_EXTENSIONS = {
 MAX_DATA_COLUMNS = max(1, min(_int_env("MAX_DATA_COLUMNS", 200), 1000))
 MAX_DATA_ROWS = max(1, min(_int_env("MAX_DATA_ROWS", 1_000_000), 2_000_000))
 MAX_MODEL_ROWS = max(100, min(_int_env("MAX_MODEL_ROWS", 10_000), 50_000))
-OPENROUTER_API_KEY = _env("OPENROUTER_API_KEY")
-OPENROUTER_MODEL = _env("OPENROUTER_MODEL", "openrouter/free")
+GROQ_API_KEY = _env("GROQ_FINSIGHTAI_API_KEY")
+GROQ_MODEL = _env("GROQ_MODEL", "llama-3.1-70b-versatile")
 GROQ_TIMEOUT = max(10, min(120, _int_env("GROQ_TIMEOUT", 45)))
 
 
@@ -769,26 +769,24 @@ def _chat_data_context(user_id: int) -> str:
     return "\n".join(lines)[:10000]
 
 
-def _openrouter_answer(messages: list[dict[str, str]]) -> str:
-    """Call OpenRouter's OpenAI-compatible endpoint without exposing the key."""
-    api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+def _groq_answer(messages: list[dict[str, str]]) -> str:
+    """Call Groq's OpenAI-compatible endpoint without exposing the key."""
+    api_key = os.environ.get("GROQ_FINSIGHTAI_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("The AI assistant is not configured on this deployment.")
     payload = json.dumps({
-        "model": OPENROUTER_MODEL,
+        "model": GROQ_MODEL,
         "messages": messages,
-        "temperature": 0.25,
-        "max_tokens": 700,
+        "temperature": 0.2,
+        "max_tokens": 2000,
     }).encode("utf-8")
     request_obj = Request(
-        "https://openrouter.ai/api/v1/chat/completions",
+        "https://api.groq.com/openai/v1/chat/completions",
         data=payload,
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "HTTP-Referer": "https://finsightai-3ea6.onrender.com",
-            "X-Title": "FinSight AI",
         },
         method="POST",
     )
@@ -796,42 +794,27 @@ def _openrouter_answer(messages: list[dict[str, str]]) -> str:
         with urlopen(request_obj, timeout=GROQ_TIMEOUT) as response:
             body = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
-            # The provider's message is useful in Render logs (invalid model,
-            # quota, authentication, etc.), but never log request headers or
-            # the API key. Keep the browser-facing response safe.
-            detail = ""
-            provider_code = ""
-            try:
-                error_body = json.loads(exc.read().decode("utf-8"))
-                error_value = error_body.get("error") if isinstance(error_body, dict) else None
-                if isinstance(error_value, dict):
-                    detail = str(error_value.get("message") or "")
-                    provider_code = str(error_value.get("code") or "")
-                elif error_value:
-                    detail = str(error_value)
-            except (OSError, ValueError, TypeError):
-                pass
-            detail = re.sub(r"(?i)bearer\s+[A-Za-z0-9._-]+", "bearer [redacted]", detail)
-            detail = re.sub(r"(?i)gsk_[A-Za-z0-9_-]+", "[redacted]", detail)
-            app.logger.warning(
-                "OpenRouter request returned HTTP %s for model %s (provider code %s): %s",
-                exc.code, OPENROUTER_MODEL, provider_code or "unknown",
-                detail[:500] or "no provider detail",
-            )
-            if exc.code == 401:
-                raise RuntimeError("The AI assistant credentials are invalid. Please try again later.") from exc
-            if exc.code in (401, 403):
-                raise RuntimeError(
-                    "The AI assistant key is invalid or the selected OpenRouter model is unavailable."
-                ) from exc
-            if exc.code == 429:
-                raise RuntimeError("The AI assistant is temporarily busy. Please try again in a moment.") from exc
-            raise RuntimeError("The AI assistant could not complete that request.") from exc
+        detail = ""
+        try:
+            error_body = json.loads(exc.read().decode("utf-8"))
+            error_value = error_body.get("error") if isinstance(error_body, dict) else None
+            if isinstance(error_value, dict):
+                detail = str(error_value.get("message") or "")
+            elif error_value:
+                detail = str(error_value)
+        except (OSError, ValueError, TypeError):
+            pass
+        app.logger.warning("Groq request returned HTTP %s: %s", exc.code, detail[:500])
+        if exc.code == 401:
+            raise RuntimeError("The AI assistant credentials are invalid.") from exc
+        if exc.code == 429:
+            raise RuntimeError("The AI assistant is temporarily busy. Please try again in a moment.") from exc
+        raise RuntimeError("The AI assistant could not complete that request.") from exc
     except (URLError, TimeoutError) as exc:
-        app.logger.warning("OpenRouter request failed: %s", type(exc).__name__)
+        app.logger.warning("Groq request failed: %s", type(exc).__name__)
         raise RuntimeError("The AI assistant is temporarily unavailable. Please try again.") from exc
     except (ValueError, OSError) as exc:
-        app.logger.warning("OpenRouter response could not be read: %s", type(exc).__name__)
+        app.logger.warning("Groq response could not be read: %s", type(exc).__name__)
         raise RuntimeError("The AI assistant returned an invalid response.") from exc
 
     try:
@@ -877,12 +860,14 @@ def chat():
     locale_names = getattr(i18n, "LOCALE_NAMES", {}) if i18n is not None else {}
     language = locale_names.get(locale, locale)
     system = (
-        "You are FinSight AI, a concise and practical financial data-analysis assistant. "
+        "You are FinSight AI, a highly professional, accurate, and detailed financial data-analysis expert. "
         f"Answer in {language} ({locale}) because that is the user's selected language. "
-        "Use the supplied dataset summary when present. Explain calculations plainly, "
-        "state when information is unavailable, and do not invent figures, forecasts, "
-        "or business facts. This is analytical guidance, not regulated financial advice. "
-        "Keep answers helpful and readable with short paragraphs or bullets.\n\n"
+        "Your responses must be comprehensive, precise, and based strictly on the provided DATA CONTEXT. "
+        "Do not provide general world knowledge; only answer questions related to the financial data within this webapp. "
+        "Stay strictly within the boundaries of the provided dataset summary. "
+        "If information is unavailable, state it clearly. Do not invent figures, forecasts, or business facts. "
+        "Provide long, detailed, and professional explanations. Structure your answers with clear paragraphs or bullet points for maximum readability. "
+        "This is analytical guidance, not regulated financial advice.\n\n"
         "DATA CONTEXT:\n" + _chat_data_context(user_id)
     )
     state = session_data.setdefault(user_id, {})
@@ -890,7 +875,7 @@ def chat():
     messages = [{"role": "system", "content": system}, *history[-10:],
                 {"role": "user", "content": message}]
     try:
-        answer = _openrouter_answer(messages)
+        answer = _groq_answer(messages)
     except RuntimeError as exc:
         return jsonify({"error": str(exc)}), 503
     history.extend([{"role": "user", "content": message},
