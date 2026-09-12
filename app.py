@@ -775,8 +775,8 @@ def _groq_answer(messages: list[dict[str, str]]) -> str:
     if not api_key:
         raise RuntimeError("The AI assistant API key is missing in Render (GROQ_FINSIGHTAI_API_KEY).")
 
-    # llama-3.3-70b-versatile is the flagship production model available to all Groq users
-    model_id = "llama-3.3-70b-versatile"
+    # llama3-8b-8192 is the most basic, universally available model on Groq
+    model_id = "llama3-8b-8192"
 
     payload = json.dumps({
         "model": model_id,
