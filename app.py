@@ -225,7 +225,8 @@ MAX_DATA_COLUMNS = max(1, min(_int_env("MAX_DATA_COLUMNS", 200), 1000))
 MAX_DATA_ROWS = max(1, min(_int_env("MAX_DATA_ROWS", 1_000_000), 2_000_000))
 MAX_MODEL_ROWS = max(100, min(_int_env("MAX_MODEL_ROWS", 10_000), 50_000))
 OPENROUTER_API_KEY = _env("OPENROUTER_API_KEY")
-OPENROUTER_MODEL = _env("OPENROUTER_MODEL", "openai/gpt-oss-120b")
+OPENROUTER_FINSIGHTAI_API_KEY = _env("OPENROUTER_FINSIGHTAI_API_KEY")
+OPENROUTER_MODEL = _env("OPENROUTER_MODEL", "openrouter/free")
 GROQ_TIMEOUT = max(10, min(120, _int_env("GROQ_TIMEOUT", 60)))
 
 
@@ -771,18 +772,18 @@ def _chat_data_context(user_id: int) -> str:
 
 def _ai_answer(messages: list[dict[str, str]]) -> str:
     """Call OpenRouter API using the professional high-speed configuration."""
-    api_key = os.environ.get("OPENROUTER_FINSIGHTAI_API_KEY", "").strip()
+    api_key = (
+        os.environ.get("OPENROUTER_FINSIGHTAI_API_KEY", "").strip()
+        or os.environ.get("OPENROUTER_API_KEY", "").strip()
+    )
     if not api_key:
-        raise RuntimeError("The AI assistant API key is missing in Render (OPENROUTER_FINSIGHTAI_API_KEY).")
-
-    # High-speed, reliable model from OpenRouter
-    model_id = "google/gemini-flash-1.5"
+        raise RuntimeError("The AI assistant API key is missing in Render. Set OPENROUTER_FINSIGHTAI_API_KEY.")
 
     payload = json.dumps({
-        "model": model_id,
+        "model": os.environ.get("OPENROUTER_MODEL", OPENROUTER_MODEL).strip() or "openrouter/free",
         "messages": messages,
-        "temperature": 0.3,
-        "max_tokens": 1500,
+        "temperature": 0.2,
+        "max_tokens": 1200,
     }).encode("utf-8")
 
     request_obj = Request(
@@ -802,6 +803,11 @@ def _ai_answer(messages: list[dict[str, str]]) -> str:
         with urlopen(request_obj, timeout=GROQ_TIMEOUT) as response:
             body = json.loads(response.read().decode("utf-8"))
             content = body["choices"][0]["message"]["content"]
+            if isinstance(content, list):
+                content = "".join(
+                    part.get("text", "") for part in content
+                    if isinstance(part, dict) and isinstance(part.get("text"), str)
+                )
             if isinstance(content, str) and content.strip():
                 return content.strip()[:12000]
     except HTTPError as exc:

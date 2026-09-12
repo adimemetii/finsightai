@@ -129,7 +129,7 @@ FLASK_APP=app.py
 SECRET_KEY=change-me
 
 # OpenRouter backend assistant (never expose this in frontend code)
-OPENROUTER_API_KEY=
+OPENROUTER_FINSIGHTAI_API_KEY=
 OPENROUTER_MODEL=openrouter/free
 GROQ_TIMEOUT=45
 
@@ -150,7 +150,7 @@ POWERBI_TEMPLATE=finsightai.pbix
 
 The application uses the `DB_*` names above. Existing local installations
 using the legacy `MYSQL_*` names remain supported as a compatibility fallback.
-`OPENROUTER_API_KEY` is required only for live chatbot answers; without it, the
+`OPENROUTER_FINSIGHTAI_API_KEY` is required only for live chatbot answers; without it, the
 application remains usable and the chat UI returns a clear configuration
 message. The API key is read only by Flask and is never sent to the browser.
 
@@ -238,14 +238,14 @@ The repository also includes `render.yaml`, which installs the requirements,
 starts Gunicorn on Render's `$PORT`, and checks `/healthz`. The Flask module
 initializes/upgrades the MySQL schema when the production process starts. Set
 `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_SSL_CA`, and
-`OPENROUTER_API_KEY` as Render environment variables. `OPENROUTER_MODEL` can
+`OPENROUTER_FINSIGHTAI_API_KEY` as Render environment variables. `OPENROUTER_MODEL` can
 select the model; the default is `openrouter/free`.
 
 ## Troubleshooting
 
 - **Database connection failed:** verify the Aiven host, port, database name,
   credentials, and CA certificate. Aiven TLS verification is enabled.
-- **Chat is not configured:** add `OPENROUTER_API_KEY` in Render or the local `.env`.
+- **Chat is not configured:** add `OPENROUTER_FINSIGHTAI_API_KEY` in Render or the local `.env`.
   Never place it in HTML, JavaScript, Git, or a README.
 - **Forecast unavailable:** inspect the upload warning for the valid dated
   observation count, invalid-date count, or missing date-column explanation.
