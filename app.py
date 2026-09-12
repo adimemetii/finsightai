@@ -770,13 +770,17 @@ def _chat_data_context(user_id: int) -> str:
 
 
 def _openrouter_answer(messages: list[dict[str, str]]) -> str:
-    """Call OpenRouter's API for high-reasoning OSS models like gpt-oss-120b."""
-    api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+    """Call OpenRouter using the GROQ_FINSIGHTAI_API_KEY variable from Render."""
+    # Using the exact variable name the user has in Render
+    api_key = os.environ.get("GROQ_FINSIGHTAI_API_KEY", "").strip()
     if not api_key:
-        raise RuntimeError("The AI assistant is not configured. Please set OPENROUTER_API_KEY in Render.")
+        raise RuntimeError("The AI assistant API key is missing in Render (GROQ_FINSIGHTAI_API_KEY).")
+
+    # Use gpt-oss-120b as requested
+    model_id = "openai/gpt-oss-120b"
 
     payload = json.dumps({
-        "model": OPENROUTER_MODEL,
+        "model": model_id,
         "messages": messages,
         "temperature": 0.2,
         "max_tokens": 2000,
@@ -809,6 +813,8 @@ def _openrouter_answer(messages: list[dict[str, str]]) -> str:
             detail = str(error_value.get("message") if isinstance(error_value, dict) else error_value) if error_value else ""
         except:
             pass
+        if exc.code == 401:
+            raise RuntimeError("Invalid API Key. Please ensure GROQ_FINSIGHTAI_API_KEY contains an OpenRouter key, as gpt-oss-120b is not available on Groq.") from exc
         raise RuntimeError(f"OpenRouter error (HTTP {exc.code}): {detail}") from exc
     except Exception as exc:
         raise RuntimeError(f"The AI assistant is unavailable: {str(exc)}") from exc
