@@ -769,14 +769,12 @@ def _chat_data_context(user_id: int) -> str:
     return "\n".join(lines)[:10000]
 
 
-def _openrouter_answer(messages: list[dict[str, str]]) -> str:
-    """Call OpenRouter using the GROQ_FINSIGHTAI_API_KEY variable from Render."""
-    # Using the exact variable name the user has in Render
+def _groq_answer(messages: list[dict[str, str]]) -> str:
+    """Call Groq's API using the gpt-oss-120b model as verified in GroqCloud."""
     api_key = os.environ.get("GROQ_FINSIGHTAI_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("The AI assistant API key is missing in Render (GROQ_FINSIGHTAI_API_KEY).")
 
-    # Use gpt-oss-120b as requested
     model_id = "openai/gpt-oss-120b"
 
     payload = json.dumps({
@@ -787,14 +785,12 @@ def _openrouter_answer(messages: list[dict[str, str]]) -> str:
     }).encode("utf-8")
 
     request_obj = Request(
-        "https://openrouter.ai/api/v1/chat/completions",
+        "https://api.groq.com/openai/v1/chat/completions",
         data=payload,
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "HTTP-Referer": "https://finsightai-3ea6.onrender.com",
-            "X-Title": "FinSight AI",
         },
         method="POST",
     )
@@ -813,9 +809,7 @@ def _openrouter_answer(messages: list[dict[str, str]]) -> str:
             detail = str(error_value.get("message") if isinstance(error_value, dict) else error_value) if error_value else ""
         except:
             pass
-        if exc.code == 401:
-            raise RuntimeError("Invalid API Key. Please ensure GROQ_FINSIGHTAI_API_KEY contains an OpenRouter key, as gpt-oss-120b is not available on Groq.") from exc
-        raise RuntimeError(f"OpenRouter error (HTTP {exc.code}): {detail}") from exc
+        raise RuntimeError(f"Groq error (HTTP {exc.code}): {detail}") from exc
     except Exception as exc:
         raise RuntimeError(f"The AI assistant is unavailable: {str(exc)}") from exc
 
@@ -870,7 +864,7 @@ def chat():
     messages = [{"role": "system", "content": system}, *history[-10:],
                 {"role": "user", "content": message}]
     try:
-        answer = _openrouter_answer(messages)
+        answer = _groq_answer(messages)
     except RuntimeError as exc:
         return jsonify({"error": str(exc)}), 503
     history.extend([{"role": "user", "content": message},
